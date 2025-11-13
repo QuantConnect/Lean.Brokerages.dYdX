@@ -11,7 +11,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
-*/
+ */
 
 using System;
 using QuantConnect.Packets;
@@ -20,12 +20,12 @@ using QuantConnect.Interfaces;
 using QuantConnect.Securities;
 using System.Collections.Generic;
 
-namespace QuantConnect.Brokerages.Template
+namespace QuantConnect.Brokerages.dYdX
 {
     /// <summary>
     /// Provides a template implementation of BrokerageFactory
     /// </summary>
-    public class TemplateBrokerageFactory : BrokerageFactory
+    public class dYdXBrokerageFactory : BrokerageFactory
     {
         /// <summary>
         /// Gets the brokerage data required to run the brokerage from configuration/disk
@@ -37,9 +37,9 @@ namespace QuantConnect.Brokerages.Template
         public override Dictionary<string, string> BrokerageData { get; }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="TemplateBrokerageFactory"/> class
+        /// Initializes a new instance of the <see cref="dYdXBrokerageFactory"/> class
         /// </summary>
-        public TemplateBrokerageFactory() : base(typeof(TemplateBrokerage))
+        public dYdXBrokerageFactory() : base(typeof(dYdXBrokerage))
         {
         }
 

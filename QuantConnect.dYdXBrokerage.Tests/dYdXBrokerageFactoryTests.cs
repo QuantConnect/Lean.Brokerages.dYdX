@@ -14,22 +14,19 @@
 */
 
 using NUnit.Framework;
+using QuantConnect.Interfaces;
+using QuantConnect.Util;
 
-namespace QuantConnect.Brokerages.Template.Tests
+namespace QuantConnect.Brokerages.dYdX.Tests
 {
-    [TestFixture, Ignore("Not implemented")]
-    public class TemplateBrokerageSymbolMapperTests
+    [TestFixture]
+    public class dYdXBrokerageFactoryTests
     {
         [Test]
-        public void ReturnsCorrectLeanSymbol()
+        public void InitializesFactoryFromComposer()
         {
-
-        }
-
-        [Test]
-        public void ReturnsCorrectBrokerageSymbol()
-        {
-
+            using var factory = Composer.Instance.Single<IBrokerageFactory>(instance => instance.BrokerageType == typeof(dYdXBrokerage));
+            Assert.IsNotNull(factory);
         }
     }
 }

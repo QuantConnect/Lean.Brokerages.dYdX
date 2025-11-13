@@ -16,9 +16,9 @@
 using QuantConnect.Orders;
 using System.Collections.Generic;
 
-namespace QuantConnect.Brokerages.Template.Tests
+namespace QuantConnect.Brokerages.dYdX.Tests
 {
-    public class InteractiveBrokersBrokerageRegressionAlgorithm : TemplateFeatureRegressionAlgorithm
+    public class InteractiveBrokersBrokerageRegressionAlgorithm : dYdXFeatureRegressionAlgorithm
     {
         public override BrokerageName Brokerage { get; set; } = BrokerageName.InteractiveBrokersBrokerage;
         protected override string BrokerageSettingsURL { get; set; } = "https://raw.githubusercontent.com/QuantConnect/Lean.Brokerages.InteractiveBrokers/master/interactivebrokers.json";

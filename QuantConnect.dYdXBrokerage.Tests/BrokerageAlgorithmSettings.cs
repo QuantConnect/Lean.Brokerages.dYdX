@@ -22,7 +22,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace QuantConnect.Brokerages.Template.Tests
+namespace QuantConnect.Brokerages.dYdX.Tests
 {
     /// <summary>
     /// Class containing the security types, order types, data types and resolutions supported by

@@ -19,10 +19,10 @@ using QuantConnect.Util;
 using System;
 using System.Linq;
 
-namespace QuantConnect.Brokerages.Template.Tests
+namespace QuantConnect.Brokerages.dYdX.Tests
 {
     [TestFixture, Ignore("This test requires a configured TemplateExchangeInfoDownloader")]
-    public class TemplateExchangeInfoDownloaderTests
+    public class dYdXExchangeInfoDownloaderTests
     {
         [Test]
         public void GetsExchangeInfo()

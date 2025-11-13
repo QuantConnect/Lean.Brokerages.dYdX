@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  *
@@ -13,20 +13,11 @@
  * limitations under the License.
 */
 
-using NUnit.Framework;
-using QuantConnect.Interfaces;
-using QuantConnect.Util;
-
-namespace QuantConnect.Brokerages.Template.Tests
+namespace QuantConnect.Brokerages.dYdX.Tests
 {
-    [TestFixture, Ignore("This test requires a configured TemplateBrokerageFactory")]
-    public class TemplateBrokerageFactoryTests
+    public class BybitBrokerageRegressionAlgorithm : dYdXFeatureRegressionAlgorithm
     {
-        [Test]
-        public void InitializesFactoryFromComposer()
-        {
-            using var factory = Composer.Instance.Single<IBrokerageFactory>(instance => instance.BrokerageType == typeof(TemplateBrokerage));
-            Assert.IsNotNull(factory);
-        }
+        public override BrokerageName Brokerage { get; set; } = BrokerageName.Bybit;
+        protected override string BrokerageSettingsURL { get; set; } = "https://raw.githubusercontent.com/QuantConnect/Lean.Brokerages.ByBit/master/bybit.json";
     }
 }

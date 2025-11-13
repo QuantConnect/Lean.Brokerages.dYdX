@@ -20,30 +20,24 @@ using QuantConnect.Tests;
 using QuantConnect.Logging;
 using QuantConnect.Data.Market;
 
-namespace QuantConnect.Brokerages.Template.Tests
+namespace QuantConnect.Brokerages.dYdX.Tests
 {
     [TestFixture]
-    public partial class TemplateBrokerageTests
+    public partial class dYdXBrokerageTests
     {
-        private static TestCaseData[] TestParameters
-        {
-            get
-            {
-                return new[]
-                {
-                    // valid parameters, for example
-                    new TestCaseData(Symbols.BTCUSD, Resolution.Tick, false),
-                    new TestCaseData(Symbols.BTCUSD, Resolution.Minute, false),
-                    new TestCaseData(Symbols.BTCUSD, Resolution.Second, false),
-                };
-            }
-        }
+        private static TestCaseData[] TestParameters =>
+        [
+            // valid parameters, for example
+            new(Symbols.BTCUSD, Resolution.Tick, false),
+            new(Symbols.BTCUSD, Resolution.Minute, false),
+            new(Symbols.BTCUSD, Resolution.Second, false)
+        ];
 
         [Test, TestCaseSource(nameof(TestParameters))]
         public void StreamsData(Symbol symbol, Resolution resolution, bool throwsException)
         {
             var cancelationToken = new CancellationTokenSource();
-            var brokerage = (TemplateBrokerage)Brokerage;
+            var brokerage = (dYdXBrokerage)Brokerage;
 
             SubscriptionDataConfig[] configs;
             if (resolution == Resolution.Tick)

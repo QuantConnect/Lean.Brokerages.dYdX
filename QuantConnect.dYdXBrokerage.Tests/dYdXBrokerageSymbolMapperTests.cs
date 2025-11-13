@@ -13,28 +13,23 @@
  * limitations under the License.
 */
 
-using QuantConnect.ToolBox;
-using System.Collections.Generic;
+using NUnit.Framework;
 
-namespace QuantConnect.Brokerages.Template.ToolBox
+namespace QuantConnect.Brokerages.dYdX.Tests
 {
-    /// <summary>
-    /// Template Brokerage implementation of <see cref="IExchangeInfoDownloader"/>
-    /// </summary>
-    public class TemplateExchangeInfoDownloader : IExchangeInfoDownloader
+    [TestFixture, Ignore("Not implemented")]
+    public class dYdXBrokerageSymbolMapperTests
     {
-        /// <summary>
-        /// Market
-        /// </summary>
-        public string Market => throw new System.NotImplementedException();
-
-        /// <summary>
-        /// Get exchange info coma-separated data
-        /// </summary>
-        /// <returns>Enumerable of exchange info for this market</returns>
-        public IEnumerable<string> Get()
+        [Test]
+        public void ReturnsCorrectLeanSymbol()
         {
-            throw new System.NotImplementedException();
+
+        }
+
+        [Test]
+        public void ReturnsCorrectBrokerageSymbol()
+        {
+
         }
     }
 }

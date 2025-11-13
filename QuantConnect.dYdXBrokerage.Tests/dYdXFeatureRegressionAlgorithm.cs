@@ -27,7 +27,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace QuantConnect.Brokerages.Template.Tests
+namespace QuantConnect.Brokerages.dYdX.Tests
 {
     /// <summary>
     /// This algorithm tests the order types, security types, data types
@@ -51,7 +51,7 @@ namespace QuantConnect.Brokerages.Template.Tests
     /// In the second step, when we start receiving data points in the OnData()
     /// method, the algorithm tries to find contracts for the futures, options
     /// index options and future options added previously. For all these securities,
-    /// if a contract is found, it saves it into a property of the 
+    /// if a contract is found, it saves it into a property of the
     /// BrokerageAlgorithmSettings. For example, if an index option contract is
     /// found, it saves the contract in IndexOptionContract. However, if no
     /// one of these security types was not added, the algorithm won't search
@@ -106,7 +106,7 @@ namespace QuantConnect.Brokerages.Template.Tests
     /// has received at least one data point for each of the symbols added in the
     /// beggining.
     /// </summary>
-    public abstract class TemplateFeatureRegressionAlgorithm: QCAlgorithm
+    public abstract class dYdXFeatureRegressionAlgorithm: QCAlgorithm
     {
         /// <summary>
         /// Index of the order type to test from the _orderTypes list
@@ -245,7 +245,7 @@ namespace QuantConnect.Brokerages.Template.Tests
         /// <summary>
         /// Once the future, option, index option and future option contracts have been set,
         /// this method will call `BrokerageAlgorithmSettings.InitializeSymbols()` method.
-        /// That method will define the securities allowed per order type according to the 
+        /// That method will define the securities allowed per order type according to the
         /// brokerage
         /// </summary>
         protected virtual void SetupSymbols()
@@ -386,7 +386,7 @@ namespace QuantConnect.Brokerages.Template.Tests
         }
 
         /// <summary>
-        /// This method will get one option contract for the added canonical option (If options 
+        /// This method will get one option contract for the added canonical option (If options
         /// are allowed by the brokerage). Once one option contract is found it will save it in
         /// the contract symbol provided by reference
         /// </summary>
@@ -415,7 +415,7 @@ namespace QuantConnect.Brokerages.Template.Tests
         }
 
         /// <summary>
-        /// This method will get one future contract for the added canonical future (If options 
+        /// This method will get one future contract for the added canonical future (If options
         /// are allowed by the brokerage). Once one future contract is found it will save it in
         /// the `BrokerageAlgorithmSettings.FutureContract` property
         /// </summary>
@@ -499,7 +499,7 @@ namespace QuantConnect.Brokerages.Template.Tests
             if (Time.Date != _last.Date) // each morning submit a market on open order
             {
                 Debug($"{Time}: Sending MarketOnOpen orders");
-                
+
                 if (!BrokerageAlgorithmSettings.SymbolToTestPerOrderType.TryGetValue(OrderType.MarketOnOpen, out var symbols))
                 {
                     symbols = BrokerageAlgorithmSettings.Symbols;
