@@ -15,11 +15,9 @@
 
 using System;
 using QuantConnect.Data;
-using QuantConnect.Util;
 using QuantConnect.Packets;
 using QuantConnect.Interfaces;
 using System.Collections.Generic;
-using System.Net.Sockets;
 using QuantConnect.Brokerages.dYdX.Api;
 
 namespace QuantConnect.Brokerages.dYdX;
@@ -28,11 +26,14 @@ namespace QuantConnect.Brokerages.dYdX;
 public partial class dYdXBrokerage : Brokerage, IDataQueueHandler, IDataQueueUniverseProvider
 {
     private const string MarketName = Market.dYdX;
+    private const SecurityType SecurityType = QuantConnect.SecurityType.CryptoFuture;
 
+    private int _subaccountNumber;
     private IAlgorithm _algorithm;
     private IDataAggregator _aggregator;
     private LiveNodePacket _job;
     private readonly EventBasedDataQueueHandlerSubscriptionManager _subscriptionManager;
+    private SymbolPropertiesDatabaseSymbolMapper _symbolMapper;
 
     private Lazy<dYdXApiClient> _apiClientLazy;
 
@@ -44,7 +45,7 @@ public partial class dYdXBrokerage : Brokerage, IDataQueueHandler, IDataQueueUni
     /// <summary>
     /// Returns true if we're currently connected to the broker
     /// </summary>
-    public override bool IsConnected { get; }
+    public override bool IsConnected => _apiClientLazy?.IsValueCreated ?? false;
 
     /// <summary>
     /// Parameterless constructor for brokerage
@@ -58,11 +59,13 @@ public partial class dYdXBrokerage : Brokerage, IDataQueueHandler, IDataQueueUni
     /// Creates a new instance
     /// </summary>
     /// <param name="aggregator">consolidate ticks</param>
-    public dYdXBrokerage(string address, string nodeUrl, IAlgorithm algorithm, IDataAggregator aggregator,
+    public dYdXBrokerage(string address, int subaccountNumber, string nodeUrl, string indexerUrl,
+        IAlgorithm algorithm,
+        IDataAggregator aggregator,
         LiveNodePacket job) :
         base(MarketName)
     {
-        Initialize(address, nodeUrl, algorithm, aggregator, job);
+        Initialize(address, subaccountNumber, nodeUrl, indexerUrl, algorithm, aggregator, job);
 
         _subscriptionManager = new EventBasedDataQueueHandlerSubscriptionManager();
         _subscriptionManager.SubscribeImpl += (s, t) => Subscribe(s);
@@ -78,35 +81,38 @@ public partial class dYdXBrokerage : Brokerage, IDataQueueHandler, IDataQueueUni
         // _connectionRateLimiter = new RateGate();
     }
 
-    private void Initialize(string address, string nodeUrl, IAlgorithm algorithm, IDataAggregator aggregator,
+    private void Initialize(string address, int subaccountNumber, string nodeUrl, string indexerUrl,
+        IAlgorithm algorithm,
+        IDataAggregator aggregator,
         LiveNodePacket job)
     {
         _job = job;
         _algorithm = algorithm;
         _aggregator = aggregator;
+        _subaccountNumber = subaccountNumber;
 
-        // can be null, if dYdXBrokerage is used as DataQueueHandler only
+        _symbolMapper = new SymbolPropertiesDatabaseSymbolMapper(MarketName);
+
+        // can be null if dYdXBrokerage is used as DataQueueHandler only
         if (_algorithm != null)
         {
             _apiClientLazy = new Lazy<dYdXApiClient>(() =>
             {
-                // Api credentials are required for the private stream
-
                 if (string.IsNullOrEmpty(address))
                 {
                     OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Error, -1, "Address is missing"));
                     throw new Exception("Address is missing");
                 }
 
-                var client = GetApiClient(address, nodeUrl);
+                var client = GetApiClient(address, nodeUrl, indexerUrl);
 
                 return client;
             });
         }
 
-        dYdXApiClient GetApiClient(string address, string nodeUrl)
+        dYdXApiClient GetApiClient(string address, string nodeUrl, string indexerUrl)
         {
-            return new dYdXApiClient(address, nodeUrl);
+            return new dYdXApiClient(address, nodeUrl, indexerUrl);
         }
     }
 

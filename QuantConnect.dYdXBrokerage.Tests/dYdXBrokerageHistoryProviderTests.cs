@@ -135,11 +135,15 @@ namespace QuantConnect.Brokerages.dYdX.Tests
             Brokerage CreateBrokerage()
             {
                 var address = Config.Get("dydx-address");
+                var subaccountNumber = Config.GetInt("dydx-subaccount-number");
                 var nodeUrl = Config.Get("dydx-node-api-url");
+                var indexerUrl = Config.Get("dydx-indexer-api-url");
 
                 return new dYdXBrokerage(
                     address,
+                    subaccountNumber,
                     nodeUrl,
+                    indexerUrl,
                     null,
                     new AggregationManager(),
                     null

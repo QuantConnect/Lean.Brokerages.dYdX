@@ -69,7 +69,9 @@ namespace QuantConnect.Brokerages.dYdX
         {
             var errors = new List<string>();
             var address = Read<string>(job.BrokerageData, "dydx-address", errors);
+            var subaccountNumber = Read<int>(job.BrokerageData, "dydx-subaccount-number", errors);
             var nodeUrl = Read<string>(job.BrokerageData, "dydx-node-api-url", errors);
+            var indexerUrl = Read<string>(job.BrokerageData, "dydx-indexer-api-url", errors);
 
             if (errors.Count != 0)
             {
@@ -80,7 +82,8 @@ namespace QuantConnect.Brokerages.dYdX
             var aggregator = Composer.Instance.GetExportedValueByTypeName<IDataAggregator>(
                 Config.Get("data-aggregator", "QuantConnect.Lean.Engine.DataFeeds.AggregationManager"),
                 forceTypeNameOnExisting: false);
-            var brokerage = new dYdXBrokerage(address, nodeUrl, algorithm, aggregator, job);
+            var brokerage =
+                new dYdXBrokerage(address, subaccountNumber, nodeUrl, indexerUrl, algorithm, aggregator, job);
             Composer.Instance.AddPart<IDataQueueHandler>(brokerage);
 
             return brokerage;

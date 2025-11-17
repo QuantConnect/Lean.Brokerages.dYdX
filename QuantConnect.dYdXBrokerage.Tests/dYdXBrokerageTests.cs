@@ -11,7 +11,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
-*/
+ */
 
 using System;
 using NUnit.Framework;
@@ -19,11 +19,13 @@ using QuantConnect.Tests;
 using QuantConnect.Interfaces;
 using QuantConnect.Securities;
 using System.Collections.Generic;
+using Moq;
+using QuantConnect.Configuration;
 using QuantConnect.Tests.Brokerages;
 
 namespace QuantConnect.Brokerages.dYdX.Tests
 {
-    [TestFixture, Ignore("Not implemented")]
+    [TestFixture]
     public partial class dYdXBrokerageTests : BrokerageTests
     {
         protected override Symbol Symbol { get; }
@@ -31,8 +33,22 @@ namespace QuantConnect.Brokerages.dYdX.Tests
 
         protected override IBrokerage CreateBrokerage(IOrderProvider orderProvider, ISecurityProvider securityProvider)
         {
-            throw new NotImplementedException();
+            var address = Config.Get("dydx-address");
+            var subaccountNumber = Config.GetInt("dydx-subaccount-number");
+            var nodeUrl = Config.Get("dydx-node-api-url");
+            var indexerUrl = Config.Get("dydx-indexer-api-url");
+
+            IAlgorithm algorithm = Mock.Of<IAlgorithm>();
+            return new dYdXBrokerage(
+                address,
+                subaccountNumber,
+                nodeUrl,
+                indexerUrl,
+                algorithm,
+                null,
+                null);
         }
+
         protected override bool IsAsync()
         {
             throw new NotImplementedException();
@@ -42,7 +58,6 @@ namespace QuantConnect.Brokerages.dYdX.Tests
         {
             throw new NotImplementedException();
         }
-
 
         /// <summary>
         /// Provides the data required to test each order type in various cases
@@ -59,43 +74,43 @@ namespace QuantConnect.Brokerages.dYdX.Tests
             yield return new TestCaseData(new MarketOrderTestParameters(optionSymbol));
         }
 
-        [Test, TestCaseSource(nameof(OrderParameters))]
+        [Test, TestCaseSource(nameof(OrderParameters)), Ignore("Not implemented")]
         public override void CancelOrders(OrderTestParameters parameters)
         {
             base.CancelOrders(parameters);
         }
 
-        [Test, TestCaseSource(nameof(OrderParameters))]
+        [Test, TestCaseSource(nameof(OrderParameters)), Ignore("Not implemented")]
         public override void LongFromZero(OrderTestParameters parameters)
         {
             base.LongFromZero(parameters);
         }
 
-        [Test, TestCaseSource(nameof(OrderParameters))]
+        [Test, TestCaseSource(nameof(OrderParameters)), Ignore("Not implemented")]
         public override void CloseFromLong(OrderTestParameters parameters)
         {
             base.CloseFromLong(parameters);
         }
 
-        [Test, TestCaseSource(nameof(OrderParameters))]
+        [Test, TestCaseSource(nameof(OrderParameters)), Ignore("Not implemented")]
         public override void ShortFromZero(OrderTestParameters parameters)
         {
             base.ShortFromZero(parameters);
         }
 
-        [Test, TestCaseSource(nameof(OrderParameters))]
+        [Test, TestCaseSource(nameof(OrderParameters)), Ignore("Not implemented")]
         public override void CloseFromShort(OrderTestParameters parameters)
         {
             base.CloseFromShort(parameters);
         }
 
-        [Test, TestCaseSource(nameof(OrderParameters))]
+        [Test, TestCaseSource(nameof(OrderParameters)), Ignore("Not implemented")]
         public override void ShortFromLong(OrderTestParameters parameters)
         {
             base.ShortFromLong(parameters);
         }
 
-        [Test, TestCaseSource(nameof(OrderParameters))]
+        [Test, TestCaseSource(nameof(OrderParameters)), Ignore("Not implemented")]
         public override void LongFromShort(OrderTestParameters parameters)
         {
             base.LongFromShort(parameters);

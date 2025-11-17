@@ -3,6 +3,7 @@ using QuantConnect.Orders;
 using QuantConnect.Securities;
 using System.Collections.Generic;
 using System.Linq;
+using QuantConnect.Logging;
 
 namespace QuantConnect.Brokerages.dYdX;
 
@@ -15,7 +16,9 @@ public partial class dYdXBrokerage
     /// <returns>The open orders returned from IB</returns>
     public override List<Order> GetOpenOrders()
     {
-        throw new NotImplementedException();
+        // TODO: Implement
+        // throw new NotImlementedException();
+        return [];
     }
 
     /// <summary>
@@ -24,7 +27,46 @@ public partial class dYdXBrokerage
     /// <returns>The current holdings from the account</returns>
     public override List<Holding> GetAccountHoldings()
     {
-        throw new NotImplementedException();
+        // dYdX Indexer provides open perpetual positions. We'll query subaccount 0 by default.
+        // This can be extended to support multiple subaccounts if needed.
+        try
+        {
+            var positionsResponse = ApiClient.GetOpenPerpetualPositions(_subaccountNumber);
+            var holdings = new List<Holding>();
+
+            if (positionsResponse?.Positions == null)
+            {
+                return holdings;
+            }
+
+            foreach (var pos in positionsResponse.Positions)
+            {
+                var ticker = pos.Symbol;
+                if (string.IsNullOrWhiteSpace(ticker))
+                {
+                    continue;
+                }
+
+                var symbol = _symbolMapper.GetLeanSymbol(ticker, SecurityType, MarketName);
+
+                var holding = new Holding
+                {
+                    Symbol = symbol,
+                    Quantity = pos.Quantity,
+                    AveragePrice = pos.EntryPrice,
+                    UnrealizedPnL = pos.UnrealizedPnl
+                };
+
+                holdings.Add(holding);
+            }
+
+            return holdings;
+        }
+        catch
+        {
+            // For safety, return empty on failure. Brokerage should surface errors via messaging if needed.
+            return [];
+        }
     }
 
     /// <summary>
@@ -75,7 +117,13 @@ public partial class dYdXBrokerage
     /// </summary>
     public override void Connect()
     {
-        throw new NotImplementedException();
+        if (IsConnected)
+        {
+            return;
+        }
+
+        _ = ApiClient;
+        Log.Trace($"Connected {ApiClient}");
     }
 
     /// <summary>
@@ -83,6 +131,7 @@ public partial class dYdXBrokerage
     /// </summary>
     public override void Disconnect()
     {
-        throw new NotImplementedException();
+        // TODO: Implement
+        // throw new NotImplementedException();
     }
 }

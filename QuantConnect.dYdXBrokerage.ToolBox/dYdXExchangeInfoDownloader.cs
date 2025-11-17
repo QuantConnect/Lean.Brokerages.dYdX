@@ -11,10 +11,14 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
-*/
+ */
 
+using System;
 using QuantConnect.ToolBox;
 using System.Collections.Generic;
+using Newtonsoft.Json;
+using QuantConnect.Brokerages.dYdX.ToolBox.Models;
+using QuantConnect.Configuration;
 
 namespace QuantConnect.Brokerages.dYdX.ToolBox
 {
@@ -26,7 +30,7 @@ namespace QuantConnect.Brokerages.dYdX.ToolBox
         /// <summary>
         /// Market
         /// </summary>
-        public string Market => throw new System.NotImplementedException();
+        public string Market => QuantConnect.Market.dYdX;
 
         /// <summary>
         /// Get exchange info coma-separated data
@@ -34,7 +38,28 @@ namespace QuantConnect.Brokerages.dYdX.ToolBox
         /// <returns>Enumerable of exchange info for this market</returns>
         public IEnumerable<string> Get()
         {
-            throw new System.NotImplementedException();
+            var baseUrl = Config.Get("dydx-indexer-url", "https://indexer.dydx.trade");
+
+            var futureData = Extensions.DownloadData($"{baseUrl.TrimEnd('/')}/v4/perpetualMarkets");
+
+            var symbols = JsonConvert.DeserializeObject<ExchangeInfo>(futureData).Symbols
+                .Values;
+            foreach (var symbol in symbols)
+            {
+                if (!symbol.Status.Equals("ACTIVE", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    continue;
+                }
+
+                var contractSize = 1;
+                var assets = symbol.Ticker.Split("-");
+                var baseAsset = assets[0].Split(",")[0];
+                var quoteAsset = assets[1];
+                var tickerCsvValue = symbol.Ticker.Contains(",") ? $"\"{symbol.Ticker}\"" : symbol.Ticker;
+
+                yield return
+                    $"{Market.ToLowerInvariant()},{baseAsset}{quoteAsset},cryptofuture,{tickerCsvValue},{quoteAsset},{contractSize},{symbol.TickSize},{symbol.StepSize},{tickerCsvValue}";
+            }
         }
     }
 }
