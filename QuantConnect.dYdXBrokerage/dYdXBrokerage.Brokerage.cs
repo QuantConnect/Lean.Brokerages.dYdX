@@ -1,12 +1,12 @@
 using System;
-using QuantConnect.Securities;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using QuantConnect.Brokerages.dYdX.Models;
 using QuantConnect.Logging;
 using QuantConnect.Orders;
 using QuantConnect.Orders.Fees;
-using QuantConnect.Util;
+using QuantConnect.Securities;
 
 namespace QuantConnect.Brokerages.dYdX;
 
@@ -212,21 +212,56 @@ public partial class dYdXBrokerage
         _ = ApiClient;
         Log.Trace($"Connected {ApiClient}");
 
-        // Subscribe to market data
+        WebSocket.Open += OnReconnect;
         ConnectSync();
-        Subscribe("v4_markets", true);
     }
+
+    private void OnReconnect(object sender, EventArgs e)
+    {
+        Task.Run(() =>
+        {
+            try
+            {
+                // Wait for the brokerage to send the "Connected/Auth" message again
+                WaitConnectionConfirmationSync();
+
+                // Once confirmed, re-send subscriptions
+                SubscribeToFixedChannels(sender, e);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"dYdXBrokerage.OnReconnect: {ex.Message}");
+            }
+        });
+    }
+
+    private void SubscribeToFixedChannels(object sender, EventArgs e)
+    {
+        Subscribe("v4_markets", batched: true);
+        Subscribe("v4_subaccounts", id: $"{Wallet.Address}/{Wallet.SubaccountNumber}", batched: false);
+    }
+
+    private void WaitConnectionConfirmationSync()
+    {
+        var connectingValidFor = TimeSpan.FromSeconds(30);
+
+        if (!_connectionConfirmedEvent.WaitOne(connectingValidFor))
+        {
+            throw new TimeoutException("Websockets connection timeout.");
+        }
+    }
+
 
     /// <summary>
     /// Disconnects the client from the broker's remote servers
     /// </summary>
     public override void Disconnect()
     {
-        if (_apiClientLazy?.IsValueCreated == true)
+        if (WebSocket?.IsOpen != true)
         {
-            _apiClientLazy.Value.DisposeSafely();
+            return;
         }
 
-        SubscriptionManager?.DisposeSafely();
+        WebSocket.Close();
     }
 }

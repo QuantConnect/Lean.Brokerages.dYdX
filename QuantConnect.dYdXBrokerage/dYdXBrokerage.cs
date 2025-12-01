@@ -14,14 +14,15 @@
  */
 
 using System;
-using QuantConnect.Data;
-using QuantConnect.Packets;
-using QuantConnect.Interfaces;
 using System.Collections.Generic;
+using System.Threading;
 using Newtonsoft.Json;
 using QuantConnect.Brokerages.dYdX.Api;
 using QuantConnect.Brokerages.dYdX.Domain;
 using QuantConnect.Brokerages.dYdX.Models.WebSockets;
+using QuantConnect.Data;
+using QuantConnect.Interfaces;
+using QuantConnect.Packets;
 using QuantConnect.Securities;
 using QuantConnect.Util;
 
@@ -50,6 +51,8 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler,
     private BrokerageConcurrentMessageHandler<WebSocketMessage> _messageHandler;
 
     private Lazy<dYdXApiClient> _apiClientLazy;
+
+    private ManualResetEvent _connectionConfirmedEvent = new(false);
 
     private Wallet Wallet { get; set; }
 
@@ -138,7 +141,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler,
 
         _symbolMapper = new SymbolPropertiesDatabaseSymbolMapper(MarketName);
 
-        _messageHandler = new BrokerageConcurrentMessageHandler<WebSocketMessage>(OnMessageReceived);
+        _messageHandler = new BrokerageConcurrentMessageHandler<WebSocketMessage>(OnUserMessage);
 
         // Rate gate limiter useful for API/WS calls
         _connectionRateLimiter = new RateGate(2, TimeSpan.FromSeconds(1));
@@ -252,13 +255,14 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler,
         return true;
     }
 
-    private bool Subscribe(string channel, bool batched = false)
+    private bool Subscribe(string channel, string id = null, bool batched = false)
     {
         _connectionRateLimiter.WaitToProceed();
         WebSocket.Send(JsonConvert.SerializeObject(new SubscribeRequestSchema
             {
                 Channel = channel,
-                Batched = false
+                Id = id,
+                Batched = batched
             }
         ));
         return true;
@@ -287,5 +291,18 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler,
         }
 
         throw new NotImplementedException();
+    }
+
+    public override void Dispose()
+    {
+        if (_apiClientLazy?.IsValueCreated == true)
+        {
+            ApiClient.DisposeSafely();
+        }
+
+        _connectionConfirmedEvent?.DisposeSafely();
+        _connectionRateLimiter?.DisposeSafely();
+        SubscriptionManager?.DisposeSafely();
+        base.Dispose();
     }
 }

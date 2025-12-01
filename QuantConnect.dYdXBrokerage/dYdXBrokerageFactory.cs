@@ -14,13 +14,13 @@
  */
 
 using System;
-using QuantConnect.Packets;
-using QuantConnect.Brokerages;
-using QuantConnect.Interfaces;
-using QuantConnect.Securities;
 using System.Collections.Generic;
+using QuantConnect.Brokerages;
 using QuantConnect.Configuration;
 using QuantConnect.Data;
+using QuantConnect.Interfaces;
+using QuantConnect.Packets;
+using QuantConnect.Securities;
 using QuantConnect.Util;
 
 namespace QuantConnect.Brokerages.dYdX

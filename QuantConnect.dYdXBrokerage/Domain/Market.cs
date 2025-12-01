@@ -1,14 +1,18 @@
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using Microsoft.VisualBasic;
 using QuantConnect.Brokerages.dYdX.Api;
 using QuantConnect.Brokerages.dYdX.Domain.Enums;
 using QuantConnect.dYdXBrokerage.dYdXProtocol.Clob;
 using QuantConnect.dYdXBrokerage.dYdXProtocol.Subaccounts;
 using QuantConnect.Orders;
 using QuantConnect.Orders.TimeInForces;
-using dYdXOrder = QuantConnect.dYdXBrokerage.dYdXProtocol.Clob.Order;
 using QuantConnect.Securities;
+using dYdXOrder = QuantConnect.dYdXBrokerage.dYdXProtocol.Clob.Order;
 using Order = QuantConnect.Orders.Order;
 
 namespace QuantConnect.Brokerages.dYdX.Domain;
@@ -19,8 +23,9 @@ public class Market
     private readonly ISymbolMapper _symbolMapper;
     private readonly SymbolPropertiesDatabase _symbolPropertiesDatabase;
     private readonly dYdXApiClient _apiClient;
-    private readonly Lazy<Dictionary<string, Models.Symbol>> _markets;
-    private static Random _random = new();
+    private readonly ConcurrentDictionary<uint, Models.Symbol> _markets = new();
+    private readonly Lock _refreshLock = new();
+    private DateTime _lastRefreshTime;
 
     public const ulong DefaultGasLimit = 1_000_000;
     private const uint ShortBlockWindow = 20u;
@@ -36,18 +41,60 @@ public class Market
         _symbolMapper = symbolMapper;
         _symbolPropertiesDatabase = symbolPropertiesDatabase;
         _apiClient = apiClient;
-        _markets = new Lazy<Dictionary<string, Models.Symbol>>(() => apiClient.Indexer.GetExchangeInfo()
-            .Symbols
-            .Values
-            .ToDictionary(c => c.ClobPairId, c => c));
+    }
+
+    private Models.Symbol GetMarketInfo(uint marketTicker)
+    {
+        if (DateTime.UtcNow - _lastRefreshTime > TimeSpan.FromMinutes(5))
+        {
+            RefreshMarkets();
+        }
+
+        if (!_markets.TryGetValue(marketTicker, out var marketInfo))
+        {
+            throw new Exception($"Market info not found for ClobPairId: {marketTicker}");
+        }
+
+        return marketInfo;
+    }
+
+    public void RefreshMarkets(IEnumerable<Models.Symbol> markets = null)
+    {
+        lock (_refreshLock)
+        {
+            if (DateTime.UtcNow - _lastRefreshTime < TimeSpan.FromMinutes(5))
+            {
+                return;
+            }
+
+            markets ??= _apiClient.Indexer.GetExchangeInfo().Symbols.Values;
+
+            foreach (var symbol in markets)
+            {
+                _markets.AddOrUpdate(symbol.ClobPairId, symbol, (_, __) => symbol);
+            }
+
+            _lastRefreshTime = DateTime.UtcNow;
+        }
+    }
+
+    public void UpdateOraclePrice(uint marketTicker, decimal oraclePrice)
+    {
+        if (_markets.TryGetValue(marketTicker, out var marketInfo))
+        {
+            lock (marketInfo)
+            {
+                marketInfo.OraclePrice = oraclePrice;
+            }
+        }
     }
 
     public dYdXOrder CreateOrder(Order order)
     {
         var orderProperties = order.Properties as dYdXOrderProperties;
         var symbolProperties = GetSymbolProperties(order);
-        var marketId = ParseMarketId(symbolProperties.MarketTicker);
-        var marketInfo = GetMarketInfo(symbolProperties.MarketTicker, marketId);
+        var marketTickerUInt = ParseMarketTicker(symbolProperties.MarketTicker);
+        var marketInfo = GetMarketInfo(marketTickerUInt);
         var orderFlag = GetOrderFlags(order);
         var side = GetOrderSide(order.Direction);
 
@@ -60,7 +107,7 @@ public class Market
                 // ClientId = checked((uint)order.Id),
                 ClientId = RandomUInt32(),
                 OrderFlags = (uint)orderFlag,
-                ClobPairId = marketId
+                ClobPairId = marketTickerUInt
             },
             Side = side,
             Quantums = CalculateQuantums(order.AbsoluteQuantity, symbolProperties, marketInfo),
@@ -98,7 +145,7 @@ public class Market
         return symbolProperties;
     }
 
-    private uint ParseMarketId(string marketTicker)
+    private uint ParseMarketTicker(string marketTicker)
     {
         if (!uint.TryParse(marketTicker, out var marketTickerAsUInt))
         {
@@ -106,16 +153,6 @@ public class Market
         }
 
         return marketTickerAsUInt;
-    }
-
-    private Models.Symbol GetMarketInfo(string marketTicker, uint marketId)
-    {
-        if (!_markets.Value.TryGetValue(marketTicker, out var marketInfo))
-        {
-            throw new Exception($"Market info not found for ClobPairId: {marketId}");
-        }
-
-        return marketInfo;
     }
 
     private void ConfigureShortTermOrder(dYdXOrder dydxOrder, dYdXOrderProperties? orderProperties,
@@ -223,6 +260,6 @@ public class Market
 
     private static uint RandomUInt32()
     {
-        return (uint)(_random.Next(1 << 30)) << 2 | (uint)(_random.Next(1 << 2));
+        return (uint)(Random.Shared.Next(1 << 30)) << 2 | (uint)(Random.Shared.Next(1 << 2));
     }
 }

@@ -4,7 +4,7 @@ namespace QuantConnect.Brokerages.dYdX.Models;
 
 public class Symbol
 {
-    [JsonProperty("clobPairId")] public string ClobPairId { get; set; }
+    [JsonProperty("clobPairId")] public uint ClobPairId { get; set; }
 
     [JsonProperty("oraclePrice")] public decimal OraclePrice { get; set; }
 

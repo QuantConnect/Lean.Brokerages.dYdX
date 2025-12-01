@@ -13,8 +13,8 @@ using QuantConnect.dYdXBrokerage.Cosmos.Tx.Signing;
 using QuantConnect.dYdXBrokerage.dYdXProtocol.Clob;
 using QuantConnect.Util;
 using Order = QuantConnect.dYdXBrokerage.dYdXProtocol.Clob.Order;
-using TxService = QuantConnect.dYdXBrokerage.Cosmos.Tx.Service;
 using TendermintService = QuantConnect.dYdXBrokerage.Cosmos.Base.Tendermint.V1Beta1.Service;
+using TxService = QuantConnect.dYdXBrokerage.Cosmos.Tx.Service;
 
 namespace QuantConnect.Brokerages.dYdX.Api;
 
