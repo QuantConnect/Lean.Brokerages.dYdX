@@ -73,30 +73,6 @@ public class Wallet
     }
 
     /// <summary>
-    /// Creates a wallet from a BIP39 mnemonic phrase
-    /// </summary>
-    /// <param name="apiClient">The dYdX API client</param>
-    /// <param name="mnemonic">The mnemonic phrase (12, 15, 18, 21, or 24 words)</param>
-    /// <param name="address">The address associated with the mnemonic</param>
-    /// <param name="chainId">Chain ID for the wallet</param>
-    /// <param name="subaccountNumber">The subaccount number to use for this wallet</param>
-    /// <returns>A new Wallet instance</returns>
-    /// <exception cref="ArgumentException">Thrown when mnemonic is null, empty, or whitespace</exception>
-    public static Wallet FromMnemonic(
-        dYdXApiClient apiClient,
-        string mnemonic,
-        string address,
-        string chainId,
-        uint subaccountNumber)
-        => Builder
-            .Create(apiClient)
-            .FromMnemonic(mnemonic)
-            .WithAddress(address)
-            .WithChainId(chainId)
-            .WithSubaccount(subaccountNumber)
-            .Build();
-
-    /// <summary>
     /// Creates a wallet from an existing private key
     /// </summary>
     /// <param name="apiClient">The dYdX API client</param>
@@ -178,22 +154,7 @@ public class Wallet
         }
 
         public static Builder Create(dYdXApiClient apiClient)
-            => new Builder(apiClient);
-
-        public Builder FromMnemonic(string mnemonic)
-        {
-            throw new NotImplementedException();
-
-            if (string.IsNullOrWhiteSpace(mnemonic))
-                throw new ArgumentException("Mnemonic cannot be null or empty", nameof(mnemonic));
-
-            _mnemonic = mnemonic;
-            // clear conflicting state
-            _privateKeyHex = null;
-            _publicKeyHex = null;
-            _publicKeyType = null;
-            return this;
-        }
+            => new (apiClient);
 
         public Builder FromPrivateKey(string privateKeyHex)
         {

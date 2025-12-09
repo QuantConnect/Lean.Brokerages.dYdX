@@ -188,7 +188,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler,
                 return client;
             });
 
-            var wallet = BuildWallet(ApiClient, privateKeyHex, null, address, chainId, subaccountNumber);
+            var wallet = BuildWallet(ApiClient, privateKeyHex, address, chainId, subaccountNumber);
 
             if (wallet == null)
             {
@@ -210,7 +210,6 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler,
 
     private Wallet BuildWallet(dYdXApiClient apiClient,
         string privateKeyHex,
-        string mnemonic,
         string address,
         string chainId,
         uint subaccountNumber)
@@ -218,11 +217,6 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler,
         if (!string.IsNullOrEmpty(privateKeyHex))
         {
             return Wallet.FromPrivateKey(apiClient, privateKeyHex, address, chainId, subaccountNumber);
-        }
-
-        if (!string.IsNullOrEmpty(mnemonic))
-        {
-            return Wallet.FromMnemonic(apiClient, mnemonic, address, chainId, subaccountNumber);
         }
 
         return null;
