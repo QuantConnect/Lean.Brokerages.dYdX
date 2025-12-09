@@ -1,14 +1,14 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using QuantConnect.Brokerages.dYdX.Api;
 using QuantConnect.Brokerages.dYdX.Domain.Enums;
 using QuantConnect.dYdXBrokerage.dYdXProtocol.Clob;
 using QuantConnect.dYdXBrokerage.dYdXProtocol.Subaccounts;
 using QuantConnect.Orders;
 using QuantConnect.Orders.TimeInForces;
-using dYdXOrder = QuantConnect.dYdXBrokerage.dYdXProtocol.Clob.Order;
 using QuantConnect.Securities;
+using QuantConnect.Brokerages.dYdX.Models;
+using dYdXOrder = QuantConnect.dYdXBrokerage.dYdXProtocol.Clob.Order;
 using Order = QuantConnect.Orders.Order;
 
 namespace QuantConnect.Brokerages.dYdX.Domain;
@@ -16,11 +16,13 @@ namespace QuantConnect.Brokerages.dYdX.Domain;
 public class Market
 {
     private readonly Wallet _wallet;
-    private readonly ISymbolMapper _symbolMapper;
+    private readonly SymbolPropertiesDatabaseSymbolMapper _symbolMapper;
     private readonly SymbolPropertiesDatabase _symbolPropertiesDatabase;
     private readonly dYdXApiClient _apiClient;
-    private readonly Lazy<Dictionary<string, Models.Symbol>> _markets;
-    private static Random _random = new();
+    private readonly Dictionary<string, Models.Symbol> _markets = new();
+    private uint _lastBlockHeight;
+    private DateTime _lastMarketRefreshTime;
+    private DateTime _lastBlockHeightUpdateTime;
 
     public const ulong DefaultGasLimit = 1_000_000;
     private const uint ShortBlockWindow = 20u;
@@ -28,7 +30,7 @@ public class Market
 
     public Market(
         Wallet wallet,
-        ISymbolMapper symbolMapper,
+        SymbolPropertiesDatabaseSymbolMapper symbolMapper,
         SymbolPropertiesDatabase symbolPropertiesDatabase,
         dYdXApiClient apiClient)
     {
@@ -36,18 +38,154 @@ public class Market
         _symbolMapper = symbolMapper;
         _symbolPropertiesDatabase = symbolPropertiesDatabase;
         _apiClient = apiClient;
-        _markets = new Lazy<Dictionary<string, Models.Symbol>>(() => apiClient.Indexer.GetExchangeInfo()
-            .Symbols
-            .Values
-            .ToDictionary(c => c.ClobPairId, c => c));
     }
 
-    public dYdXOrder CreateOrder(Order order)
+    private Models.Symbol GetMarketInfo(string marketTicker)
+    {
+        if (DateTime.UtcNow - _lastMarketRefreshTime > TimeSpan.FromMinutes(5))
+        {
+            RefreshMarkets();
+        }
+
+        if (!_markets.TryGetValue(marketTicker, out var marketInfo))
+        {
+            throw new Exception($"Market info not found for Ticker: {marketTicker}");
+        }
+
+        return marketInfo;
+    }
+
+    public void RefreshMarkets(IEnumerable<Models.Symbol> markets = null)
+    {
+        _markets.Clear();
+        markets ??= _apiClient.Indexer.GetExchangeInfo().Symbols.Values;
+
+        foreach (var symbol in markets)
+        {
+            if (!_symbolMapper.IsKnownBrokerageSymbol(symbol.Ticker))
+            {
+                continue;
+            }
+
+            _markets.Add(symbol.Ticker, symbol);
+        }
+
+        _lastMarketRefreshTime = DateTime.UtcNow;
+    }
+
+    public void UpdateOraclePrice(string marketTicker, decimal oraclePrice)
+    {
+        if (_markets.TryGetValue(marketTicker, out var marketInfo))
+        {
+            marketInfo.OraclePrice = oraclePrice;
+        }
+    }
+
+    public Order ParseOrder(OrderDto orderDto)
+    {
+        var symbol = _symbolMapper.GetLeanSymbol(orderDto.Ticker, SecurityType.CryptoFuture, QuantConnect.Market.dYdX);
+
+        decimal size = 0, price = 0, triggerPrice = 0;
+        if (!string.IsNullOrEmpty(orderDto.Size)) size = orderDto.Size.ToDecimal();
+        if (!string.IsNullOrEmpty(orderDto.Price)) price = orderDto.Price.ToDecimal();
+        if (!string.IsNullOrEmpty(orderDto.TriggerPrice)) triggerPrice = orderDto.TriggerPrice.ToDecimal();
+        var quantity = orderDto.Side switch
+        {
+            OrderDirection.Buy => size,
+            OrderDirection.Sell => -size,
+            _ => throw new Exception($"Unexpected code path: orderDirection for {orderDto.Id}")
+        };
+
+        var orderType = ParseOrderType(orderDto);
+        Order order = orderType switch
+        {
+            OrderType.Limit => new LimitOrder(
+                symbol,
+                quantity,
+                price,
+                orderDto.UpdatedAt,
+                properties: new dYdXOrderProperties
+                {
+                    PostOnly = orderDto.PostOnly,
+                    ReduceOnly = orderDto.ReduceOnly,
+                    TimeInForce = new GoodTilDateTimeInForce(Time.ParseDate(orderDto.GoodTilBlockTime))
+                }),
+            OrderType.Market => new MarketOrder(
+                symbol,
+                quantity,
+                orderDto.UpdatedAt,
+                properties: new dYdXOrderProperties
+                {
+                    ReduceOnly = orderDto.ReduceOnly
+                }),
+            OrderType.StopMarket => new StopMarketOrder(
+                symbol,
+                quantity,
+                triggerPrice,
+                orderDto.UpdatedAt,
+                properties: new dYdXOrderProperties
+                {
+                    ReduceOnly = orderDto.ReduceOnly
+                }),
+            OrderType.StopLimit => new StopLimitOrder(
+                symbol,
+                quantity,
+                triggerPrice,
+                price,
+                orderDto.UpdatedAt,
+                properties: new dYdXOrderProperties
+                {
+                    PostOnly = orderDto.PostOnly,
+                    ReduceOnly = orderDto.ReduceOnly,
+                    TimeInForce = new GoodTilDateTimeInForce(Time.ParseDate(orderDto.GoodTilBlockTime))
+                }),
+            _ => new MarketOrder() // Fallback
+        };
+
+        order.Status = ParseOrderStatus(orderDto.Status);
+        order.BrokerId.Add(orderDto.Id);
+
+        return order;
+    }
+
+    private OrderType ParseOrderType(OrderDto orderDto)
+    {
+        var orderFlags = orderDto.OrderFlags;
+        if (!Enum.IsDefined(typeof(OrderFlags), orderFlags))
+        {
+            throw new InvalidCastException($"Unexpected : orderFlags for {orderFlags}");
+        }
+
+        return (OrderFlags)orderFlags switch
+        {
+            OrderFlags.LongTerm => OrderType.Limit,
+            OrderFlags.ShortTerm when !string.IsNullOrEmpty(orderDto.GoodTilBlockTime) => OrderType.Limit,
+            OrderFlags.ShortTerm when !string.IsNullOrEmpty(orderDto.GoodTilBlock) => OrderType.Market,
+            OrderFlags.Conditional when orderDto.ClientMetadata == 1u => OrderType.StopMarket,
+            OrderFlags.Conditional => OrderType.StopLimit,
+            _ => OrderType.Limit
+        };
+    }
+
+    public static OrderStatus ParseOrderStatus(string status)
+    {
+        return status?.ToUpperInvariant() switch
+        {
+            "BEST_EFFORT_OPENED" => OrderStatus.Submitted,
+            "OPEN" => OrderStatus.Submitted,
+            "FILLED" => OrderStatus.Filled,
+            "BEST_EFFORT_CANCELED" => OrderStatus.Canceled,
+            "CANCELED" => OrderStatus.Canceled,
+            "PENDING" => OrderStatus.New,
+            _ => OrderStatus.None
+        };
+    }
+
+    public dYdXOrder CreateOrder(Order order, uint clientId)
     {
         var orderProperties = order.Properties as dYdXOrderProperties;
         var symbolProperties = GetSymbolProperties(order);
-        var marketId = ParseMarketId(symbolProperties.MarketTicker);
-        var marketInfo = GetMarketInfo(symbolProperties.MarketTicker, marketId);
+        var marketInfo = GetMarketInfo(symbolProperties.MarketTicker);
         var orderFlag = GetOrderFlags(order);
         var side = GetOrderSide(order.Direction);
 
@@ -56,11 +194,9 @@ public class Market
             OrderId = new OrderId
             {
                 SubaccountId = new SubaccountId { Owner = _wallet.Address, Number = _wallet.SubaccountNumber },
-                // TODO: dYdX does not return order Id; LEAN orderId always starts from 1 on each run, so we use ClientId as a workaround
-                // ClientId = checked((uint)order.Id),
-                ClientId = RandomUInt32(),
+                ClientId = clientId,
                 OrderFlags = (uint)orderFlag,
-                ClobPairId = marketId
+                ClobPairId = marketInfo.ClobPairId
             },
             Side = side,
             Quantums = CalculateQuantums(order.AbsoluteQuantity, symbolProperties, marketInfo),
@@ -88,7 +224,8 @@ public class Market
         var symbolProperties = _symbolPropertiesDatabase.GetSymbolProperties(
             order.Symbol.ID.Market,
             order.Symbol,
-            order.Symbol.SecurityType, Currencies.USD);
+            order.Symbol.SecurityType,
+            Currencies.USD);
 
         if (symbolProperties == null)
         {
@@ -96,26 +233,6 @@ public class Market
         }
 
         return symbolProperties;
-    }
-
-    private uint ParseMarketId(string marketTicker)
-    {
-        if (!uint.TryParse(marketTicker, out var marketTickerAsUInt))
-        {
-            throw new Exception($"Invalid market ticker: {marketTicker}");
-        }
-
-        return marketTickerAsUInt;
-    }
-
-    private Models.Symbol GetMarketInfo(string marketTicker, uint marketId)
-    {
-        if (!_markets.Value.TryGetValue(marketTicker, out var marketInfo))
-        {
-            throw new Exception($"Market info not found for ClobPairId: {marketId}");
-        }
-
-        return marketInfo;
     }
 
     private void ConfigureShortTermOrder(dYdXOrder dydxOrder, dYdXOrderProperties? orderProperties,
@@ -131,8 +248,7 @@ public class Market
             : oraclePrice * (1 - MarketPriceBuffer);
 
         dydxOrder.Subticks = CalculateSubticks(targetPrice, symbolProperties, marketInfo);
-        dydxOrder.GoodTilBlock = _apiClient.Node.GetLatestBlockHeight() +
-                                 (orderProperties?.GoodTilBlockOffset ?? ShortBlockWindow);
+        dydxOrder.GoodTilBlock = GetBlockHeight() + (orderProperties?.GoodTilBlockOffset ?? ShortBlockWindow);
     }
 
     private void ConfigureLongTermOrder(dYdXOrder dydxOrder, Order order, Models.Symbol marketInfo,
@@ -140,6 +256,7 @@ public class Market
     {
         if (order.TimeInForce is not GoodTilDateTimeInForce dateTimeInForce)
         {
+            // TODO: how to convert other time in force types?
             throw new Exception($"Expected GoodTilDateTimeInForce {order.Type}");
         }
 
@@ -166,11 +283,9 @@ public class Market
     {
         return type switch
         {
-            OrderType.Market => dYdXOrder.Types.TimeInForce.Ioc,
             OrderType.Limit or OrderType.StopLimit => postOnly
                 ? dYdXOrder.Types.TimeInForce.PostOnly
                 : dYdXOrder.Types.TimeInForce.Unspecified,
-            OrderType.StopMarket => dYdXOrder.Types.TimeInForce.Ioc,
             _ => dYdXOrder.Types.TimeInForce.Unspecified
         };
     }
@@ -179,7 +294,7 @@ public class Market
     {
         return type switch
         {
-            OrderType.Market or OrderType.StopMarket or OrderType.StopLimit => 1u,
+            OrderType.Market or OrderType.StopMarket => 1u,
             _ => 0u
         };
     }
@@ -189,7 +304,7 @@ public class Market
         return order.Type switch
         {
             OrderType.Market => OrderFlags.ShortTerm,
-            OrderType.Limit => order.TimeInForce is GoodTilDateTimeInForce ? OrderFlags.LongTerm : OrderFlags.ShortTerm,
+            OrderType.Limit => OrderFlags.LongTerm,
             OrderType.StopLimit or OrderType.StopMarket => OrderFlags.Conditional,
             _ => throw new Exception($"Unexpected code path: orderFlags for {order.Type}")
         };
@@ -221,8 +336,19 @@ public class Market
             : QuantConnect.dYdXBrokerage.dYdXProtocol.Clob.Order.Types.Side.Sell;
     }
 
-    private static uint RandomUInt32()
+    private uint GetBlockHeight()
     {
-        return (uint)(_random.Next(1 << 30)) << 2 | (uint)(_random.Next(1 << 2));
+        if (DateTime.UtcNow - _lastBlockHeightUpdateTime > TimeSpan.FromSeconds(5))
+        {
+            UpdateBlockHeigh(_apiClient.Node.GetLatestBlockHeight());
+        }
+
+        return _lastBlockHeight;
+    }
+
+    public void UpdateBlockHeigh(uint blockHeight)
+    {
+        _lastBlockHeight = blockHeight;
+        _lastBlockHeightUpdateTime = DateTime.UtcNow;
     }
 }

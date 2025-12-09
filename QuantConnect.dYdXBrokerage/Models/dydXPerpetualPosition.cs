@@ -12,14 +12,14 @@ public class dYdXPerpetualPosition
     [JsonProperty("maxSize")] public decimal MaxSize { get; set; }
 
     [JsonProperty("entryPrice")] public decimal EntryPrice { get; set; }
-    [JsonProperty("exitPrice")] public decimal ExitPrice { get; set; }
+    [JsonProperty("exitPrice")] public decimal? ExitPrice { get; set; }
 
     [JsonProperty("realizedPnl")] public decimal RealizedPnl { get; set; }
     [JsonProperty("unrealizedPnl")] public decimal UnrealizedPnl { get; set; }
 
-    [JsonProperty("createdAt")] public System.DateTime? CreatedAt { get; set; }
-    [JsonProperty("createdAtHeight")] public long? CreatedAtHeight { get; set; }
-    [JsonProperty("closedAt")] public System.DateTime? ClosedAt { get; set; }
+    [JsonProperty("createdAt")] public string CreatedAt { get; set; }
+    [JsonProperty("createdAtHeight")] public long CreatedAtHeight { get; set; }
+    [JsonProperty("closedAt")] public string ClosedAt { get; set; }
 
     [JsonProperty("sumOpen")] public decimal SumOpen { get; set; }
     [JsonProperty("sumClose")] public decimal SumClose { get; set; }

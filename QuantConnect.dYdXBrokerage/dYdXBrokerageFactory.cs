@@ -14,13 +14,13 @@
  */
 
 using System;
-using QuantConnect.Packets;
-using QuantConnect.Brokerages;
-using QuantConnect.Interfaces;
-using QuantConnect.Securities;
 using System.Collections.Generic;
+using QuantConnect.Brokerages;
 using QuantConnect.Configuration;
 using QuantConnect.Data;
+using QuantConnect.Interfaces;
+using QuantConnect.Packets;
+using QuantConnect.Securities;
 using QuantConnect.Util;
 
 namespace QuantConnect.Brokerages.dYdX
@@ -43,9 +43,10 @@ namespace QuantConnect.Brokerages.dYdX
             { "dydx-mnemonic", Config.Get("dydx-mnemonic") },
             { "dydx-address", Config.Get("dydx-address") },
             { "dydx-subaccount-number", Config.Get("dydx-subaccount-number") },
-            { "dydx-node-api-rest", Config.Get("dydx-node-api-rest") },
-            { "dydx-node-api-grpc", Config.Get("dydx-node-api-grpc") },
-            { "dydx-indexer-api-rest", Config.Get("dydx-indexer-api-rest") },
+            { "dydx-node-api-rest", Config.Get("dydx-node-api-rest", "https://test-dydx-rest.kingnodes.com") },
+            { "dydx-node-api-grpc", Config.Get("dydx-node-api-grpc", "https://test-dydx-rest.kingnodes.com:443") },
+            { "dydx-indexer-api-rest", Config.Get("dydx-indexer-api-rest", "https://indexer.v4testnet.dydx.exchange") },
+            { "dydx-indexer-api-wss", Config.Get("dydx-indexer-api-wss", "wss://indexer.v4testnet.dydx.exchange/v4/ws") },
             { "dydx-chain-id", Config.Get("dydx-chain-id") }
         };
 
@@ -87,7 +88,8 @@ namespace QuantConnect.Brokerages.dYdX
             var subaccountNumber = Read<uint>(job.BrokerageData, "dydx-subaccount-number", errors);
             var nodeRestUrl = Read<string>(job.BrokerageData, "dydx-node-api-rest", errors);
             var nodeGrpcUrl = Read<string>(job.BrokerageData, "dydx-node-api-grpc", errors);
-            var indexerUrl = Read<string>(job.BrokerageData, "dydx-indexer-api-rest", errors);
+            var indexerRestUrl = Read<string>(job.BrokerageData, "dydx-indexer-api-rest", errors);
+            var indexerWssUrl = Read<string>(job.BrokerageData, "dydx-indexer-api-wss", errors);
             var chainId = Read<string>(job.BrokerageData, "dydx-chain-id", errors);
 
             if (errors.Count != 0)
@@ -108,9 +110,12 @@ namespace QuantConnect.Brokerages.dYdX
                     subaccountNumber,
                     nodeRestUrl,
                     nodeGrpcUrl,
-                    indexerUrl,
+                    indexerRestUrl,
+                    indexerWssUrl,
                     algorithm,
-                    aggregator, job);
+                    algorithm?.Transactions,
+                    aggregator,
+                    job);
             Composer.Instance.AddPart<IDataQueueHandler>(brokerage);
 
             return brokerage;

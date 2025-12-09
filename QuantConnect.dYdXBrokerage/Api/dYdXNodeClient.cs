@@ -4,6 +4,7 @@ using Cosmos.Crypto.Secp256K1;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Net.Client;
+using Newtonsoft.Json;
 using QuantConnect.Brokerages.dYdX.Domain;
 using QuantConnect.Brokerages.dYdX.Domain.Enums;
 using QuantConnect.Brokerages.dYdX.Models;
@@ -11,10 +12,11 @@ using QuantConnect.dYdXBrokerage.Cosmos.Base.Tendermint.V1Beta1;
 using QuantConnect.dYdXBrokerage.Cosmos.Tx;
 using QuantConnect.dYdXBrokerage.Cosmos.Tx.Signing;
 using QuantConnect.dYdXBrokerage.dYdXProtocol.Clob;
+using QuantConnect.Logging;
 using QuantConnect.Util;
 using Order = QuantConnect.dYdXBrokerage.dYdXProtocol.Clob.Order;
-using TxService = QuantConnect.dYdXBrokerage.Cosmos.Tx.Service;
 using TendermintService = QuantConnect.dYdXBrokerage.Cosmos.Base.Tendermint.V1Beta1.Service;
+using TxService = QuantConnect.dYdXBrokerage.Cosmos.Tx.Service;
 
 namespace QuantConnect.Brokerages.dYdX.Api;
 

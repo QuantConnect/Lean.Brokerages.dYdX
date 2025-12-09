@@ -150,6 +150,7 @@ namespace QuantConnect.Brokerages.dYdX.Tests
                 var nodeUrlRest = Config.Get("dydx-node-api-rest");
                 var nodeUrlGrpc = Config.Get("dydx-node-api-grpc");
                 var indexerUrlRest = Config.Get("dydx-indexer-api-rest");
+                var indexerUrlWss = Config.Get("dydx-indexer-api-wss");
                 var chainId = Config.Get("dydx-chain-id");
 
                 return new dYdXBrokerage(
@@ -161,6 +162,8 @@ namespace QuantConnect.Brokerages.dYdX.Tests
                     nodeUrlRest,
                     nodeUrlGrpc,
                     indexerUrlRest,
+                    indexerUrlWss,
+                    null,
                     null,
                     new AggregationManager(),
                     null

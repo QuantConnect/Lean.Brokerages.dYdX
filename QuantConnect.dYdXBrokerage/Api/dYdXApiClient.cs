@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using QuantConnect.Brokerages.dYdX.Domain;
 using QuantConnect.Util;
 
 namespace QuantConnect.Brokerages.dYdX.Api;

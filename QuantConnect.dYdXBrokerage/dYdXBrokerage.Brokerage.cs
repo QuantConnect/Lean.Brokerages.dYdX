@@ -1,12 +1,15 @@
 using System;
-using QuantConnect.Securities;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using QuantConnect.Brokerages.dYdX.Models;
 using QuantConnect.Logging;
 using QuantConnect.Orders;
 using QuantConnect.Orders.Fees;
+using QuantConnect.Securities;
 using QuantConnect.Util;
+using Order = QuantConnect.Orders.Order;
 
 namespace QuantConnect.Brokerages.dYdX;
 
@@ -14,14 +17,24 @@ public partial class dYdXBrokerage
 {
     /// <summary>
     /// Gets all open orders on the account.
-    /// NOTE: The order objects returned do not have QC order IDs.
     /// </summary>
-    /// <returns>The open orders returned from IB</returns>
+    /// <returns>The open orders returned from dYdX</returns>
     public override List<Order> GetOpenOrders()
     {
-        // TODO: Implement
-        // throw new NotImlementedException();
-        return [];
+        var orders = new List<Order>();
+        var dydxOrders = ApiClient.Indexer.GetOpenOrders(Wallet);
+        foreach (var dydxOrder in dydxOrders)
+        {
+            var order = _market.ParseOrder(dydxOrder);
+            if (order.Status.IsClosed())
+            {
+                continue;
+            }
+
+            orders.Add(order);
+        }
+
+        return orders;
     }
 
     /// <summary>
@@ -65,10 +78,11 @@ public partial class dYdXBrokerage
 
             return holdings;
         }
-        catch
+        catch (Exception err)
         {
-            // For safety, return empty on failure. Brokerage should surface errors via messaging if needed.
-            return [];
+            Log.Error(
+                $"dYdXBrokerage.GetAccountHoldings() Error: {err.Message} Source {err.Source} Stack {err.StackTrace}");
+            throw;
         }
     }
 
@@ -92,40 +106,61 @@ public partial class dYdXBrokerage
     /// <returns>True if the request for a new order has been placed, false otherwise</returns>
     public override bool PlaceOrder(Order order)
     {
-        dYdXPlaceOrderResponse result;
-        try
+        if (!CanSubscribe(order.Symbol))
         {
-            var dydxOrder = _market.CreateOrder(order);
-            var gasLimit = (order.Properties as dYdXOrderProperties)?.GasLimit ?? Domain.Market.DefaultGasLimit;
-            result = ApiClient.Node.PlaceOrder(Wallet, dydxOrder, gasLimit);
-            if (result.Code == 0)
+            OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1,
+                $"Symbol is not supported {order.Symbol}"));
+            return false;
+        }
+
+        var resetEvent = new ManualResetEventSlim(false);
+        var clientId = RandomUInt32();
+        dYdXPlaceOrderResponse result = null;
+        _messageHandler.WithLockedStream(() =>
+        {
+            try
             {
-                order.BrokerId.Add(result.OrderId.ToString());
-                OnOrderEvent(new OrderEvent(order, DateTime.UtcNow, OrderFee.Zero, "dYdX Order Event")
+                var dydxOrder = _market.CreateOrder(order, clientId);
+                var gasLimit = (order.Properties as dYdXOrderProperties)?.GasLimit ?? Domain.Market.DefaultGasLimit;
+                _pendingOrders[clientId] = Tuple.Create(resetEvent, order);
+                result = ApiClient.Node.PlaceOrder(Wallet, dydxOrder, gasLimit);
+                if (result.Code == 0)
                 {
-                    Status = OrderStatus.Submitted
+                    OnOrderEvent(new OrderEvent(order, DateTime.UtcNow, OrderFee.Zero, "dYdX Order Event")
+                    {
+                        Status = OrderStatus.New
+                    });
+                }
+                else
+                {
+                    var message =
+                        $"Order failed, Order Id: {order.Id} timestamp: {order.Time} quantity: {order.Quantity} content: {result.Message}";
+                    OnOrderEvent(new OrderEvent(
+                            order,
+                            DateTime.UtcNow,
+                            OrderFee.Zero,
+                            result.Message)
+                        { Status = OrderStatus.Invalid });
+                    OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1, message));
+                }
+            }
+            catch (Exception ex)
+            {
+                OnOrderEvent(new OrderEvent(order, DateTime.UtcNow, OrderFee.Zero,
+                    "dYdX Order Event: " + ex.Message)
+                {
+                    Status = OrderStatus.Invalid
                 });
             }
-            else
-            {
-                var message =
-                    $"Order failed, Order Id: {order.Id} timestamp: {order.Time} quantity: {order.Quantity} content: {result.Message}";
-                OnOrderEvent(new OrderEvent(
-                        order,
-                        DateTime.UtcNow,
-                        OrderFee.Zero,
-                        result.Message)
-                    { Status = OrderStatus.Invalid });
-                OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1, message));
-            }
-        }
-        catch (Exception ex)
+        });
+
+        if (result?.Code == 0 && !resetEvent.Wait(WaitPlaceOrderEventTimeout))
         {
-            OnOrderEvent(new OrderEvent(order, DateTime.UtcNow, OrderFee.Zero, "dYdX Order Event: " + ex.Message)
-            {
-                Status = OrderStatus.Invalid
-            });
+            OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1, "Order timed out"));
         }
+
+        _pendingOrders.TryRemove(clientId, out _);
+        resetEvent.DisposeSafely();
 
         return true;
     }
@@ -160,42 +195,52 @@ public partial class dYdXBrokerage
             return false;
         }
 
-        dYdXCancelOrderResponse result;
-        try
+
+        // TODO: Do we need to remote map record for cancelled orders?
+        if (!_orderBrokerIdToClientIdMap.TryGetValue(order.BrokerId.First(), out var clientId))
         {
-            var dydxOrder = _market.CreateOrder(order);
-            var gasLimit = (order.Properties as dYdXOrderProperties)?.GasLimit ?? Domain.Market.DefaultGasLimit;
-            result = ApiClient.Node.CancelOrder(Wallet, dydxOrder, gasLimit);
-        }
-        catch (Exception ex)
-        {
-            OnOrderEvent(new OrderEvent(order, DateTime.UtcNow, OrderFee.Zero, "dYdX Order Event: " + ex.Message)
-            {
-                Status = OrderStatus.Invalid
-            });
+            OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1, $"Order {order.Id} has no clientId"));
             return false;
         }
 
-        if (result.Code == 0)
+        dYdXCancelOrderResponse result;
+        _messageHandler.WithLockedStream(() =>
         {
-            OnOrderEvent(new OrderEvent(order, DateTime.UtcNow, OrderFee.Zero, "dYdX Order Event")
+            try
             {
-                Status = OrderStatus.CancelPending
-            });
-        }
-        else
-        {
-            var message =
-                $"Cancel order failed, Order Id: {order.Id} timestamp: {order.Time} quantity: {order.Quantity} content: {result.Message}";
-            OnOrderEvent(new OrderEvent(
-                    order,
-                    DateTime.UtcNow,
-                    OrderFee.Zero,
-                    result.Message)
-                { Status = OrderStatus.Invalid });
-            OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1, message));
-        }
+                var dydxOrder = _market.CreateOrder(order, clientId);
+                var gasLimit = (order.Properties as dYdXOrderProperties)?.GasLimit ?? Domain.Market.DefaultGasLimit;
+                result = ApiClient.Node.CancelOrder(Wallet, dydxOrder, gasLimit);
+            }
+            catch (Exception ex)
+            {
+                OnOrderEvent(new OrderEvent(order, DateTime.UtcNow, OrderFee.Zero, "dYdX Order Event: " + ex.Message)
+                {
+                    Status = OrderStatus.Invalid
+                });
+                return;
+            }
 
+            if (result.Code == 0)
+            {
+                OnOrderEvent(new OrderEvent(order, DateTime.UtcNow, OrderFee.Zero, "dYdX Order Event")
+                {
+                    Status = OrderStatus.CancelPending
+                });
+            }
+            else
+            {
+                var message =
+                    $"Cancel order failed, Order Id: {order.Id} timestamp: {order.Time} quantity: {order.Quantity} content: {result.Message}";
+                OnOrderEvent(new OrderEvent(
+                        order,
+                        DateTime.UtcNow,
+                        OrderFee.Zero,
+                        result.Message)
+                    { Status = OrderStatus.Invalid });
+                OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1, message));
+            }
+        });
         return true;
     }
 
@@ -211,6 +256,44 @@ public partial class dYdXBrokerage
 
         _ = ApiClient;
         Log.Trace($"Connected {ApiClient}");
+
+        WebSocket.Open += OnReconnect;
+        ConnectSync();
+    }
+
+    private void OnReconnect(object sender, EventArgs e)
+    {
+        Task.Run(() =>
+        {
+            try
+            {
+                // Wait for the brokerage to send the "Connected/Auth" message again
+                WaitConnectionConfirmationSync();
+
+                // Once confirmed, re-send subscriptions
+                SubscribeToFixedChannels(sender, e);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"dYdXBrokerage.OnReconnect: {ex.Message}");
+            }
+        });
+    }
+
+    private void SubscribeToFixedChannels(object sender, EventArgs e)
+    {
+        Subscribe("v4_markets", batched: true);
+        Subscribe("v4_subaccounts", id: $"{Wallet.Address}/{Wallet.SubaccountNumber}", batched: false);
+    }
+
+    private void WaitConnectionConfirmationSync()
+    {
+        var connectingValidFor = TimeSpan.FromSeconds(30);
+
+        if (!_connectionConfirmedEvent.WaitOne(connectingValidFor))
+        {
+            throw new TimeoutException("Websockets connection timeout.");
+        }
     }
 
     /// <summary>
@@ -218,9 +301,11 @@ public partial class dYdXBrokerage
     /// </summary>
     public override void Disconnect()
     {
-        if (_apiClientLazy?.IsValueCreated == true)
+        if (WebSocket?.IsOpen != true)
         {
-            _apiClientLazy.Value.DisposeSafely();
+            return;
         }
+
+        WebSocket.Close();
     }
 }

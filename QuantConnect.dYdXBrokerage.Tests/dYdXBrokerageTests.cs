@@ -21,7 +21,12 @@ using QuantConnect.Securities;
 using System.Collections.Generic;
 using Moq;
 using QuantConnect.Configuration;
+using QuantConnect.Data;
+using QuantConnect.Data.Market;
+using QuantConnect.Lean.Engine.DataFeeds;
+using QuantConnect.Packets;
 using QuantConnect.Tests.Brokerages;
+using QuantConnect.Tests.Common.Securities;
 
 namespace QuantConnect.Brokerages.dYdX.Tests
 {
@@ -33,6 +38,8 @@ namespace QuantConnect.Brokerages.dYdX.Tests
         protected override Symbol Symbol => _ethusd;
         protected override SecurityType SecurityType => SecurityType.CryptoFuture;
 
+        protected override decimal GetDefaultQuantity() => 0.01m;
+
         protected override IBrokerage CreateBrokerage(IOrderProvider orderProvider, ISecurityProvider securityProvider)
         {
             var privateKey = Config.Get("dydx-private-key-hex");
@@ -42,9 +49,24 @@ namespace QuantConnect.Brokerages.dYdX.Tests
             var nodeUrlRest = Config.Get("dydx-node-api-rest");
             var nodeUrlGrpc = Config.Get("dydx-node-api-grpc");
             var indexerUrlRest = Config.Get("dydx-indexer-api-rest");
+            var indexerUrlWss = Config.Get("dydx-indexer-api-wss");
             var chainId = Config.Get("dydx-chain-id");
 
-            IAlgorithm algorithm = Mock.Of<IAlgorithm>();
+            var securities = new SecurityManager(new TimeKeeper(DateTime.UtcNow, TimeZones.NewYork))
+            {
+                { Symbol, CreateSecurity(Symbol) }
+            };
+            var algorithmSettings = new AlgorithmSettings();
+            var transactions = new SecurityTransactionManager(null, securities);
+            transactions.SetOrderProcessor(new FakeOrderProcessor());
+
+            var algorithm = new Mock<IAlgorithm>();
+            algorithm.Setup(a => a.Transactions).Returns(transactions);
+            algorithm.Setup(a => a.Securities).Returns(securities);
+            algorithm.Setup(a => a.BrokerageModel).Returns(new dYdXBrokerageModel());
+            algorithm.Setup(a => a.Portfolio)
+                .Returns(new SecurityPortfolioManager(securities, transactions, algorithmSettings));
+
             return new dYdXBrokerage(
                 privateKey,
                 mnemonic,
@@ -54,15 +76,14 @@ namespace QuantConnect.Brokerages.dYdX.Tests
                 nodeUrlRest,
                 nodeUrlGrpc,
                 indexerUrlRest,
-                algorithm,
-                null,
-                null);
+                indexerUrlWss,
+                algorithm.Object,
+                orderProvider,
+                new AggregationManager(),
+                new LiveNodePacket());
         }
 
-        protected override bool IsAsync()
-        {
-            throw new NotImplementedException();
-        }
+        protected override bool IsAsync() => true;
 
         protected override decimal GetAskPrice(Symbol symbol)
         {
@@ -125,6 +146,31 @@ namespace QuantConnect.Brokerages.dYdX.Tests
         public override void LongFromShort(OrderTestParameters parameters)
         {
             base.LongFromShort(parameters);
+        }
+
+        public static Security CreateSecurity(Symbol symbol)
+        {
+            var timezone = TimeZones.NewYork;
+
+            var config = new SubscriptionDataConfig(
+                typeof(TradeBar),
+                symbol,
+                Resolution.Hour,
+                timezone,
+                timezone,
+                true,
+                false,
+                false);
+
+            return new Security(
+                SecurityExchangeHours.AlwaysOpen(timezone),
+                config,
+                new Cash(Currencies.USD, 0, 1),
+                SymbolProperties.GetDefault(Currencies.USD),
+                ErrorCurrencyConverter.Instance,
+                RegisteredSecurityDataTypesProvider.Null,
+                new SecurityCache()
+            );
         }
     }
 }

@@ -71,7 +71,7 @@ namespace QuantConnect.Brokerages.dYdX.ToolBox
                 var priceMagnifier = ((decimal)Math.Pow(10, exponent)).ToStringInvariant();
 
                 yield return
-                    $"{Market.ToLowerInvariant()},{baseAsset}{quoteAsset},cryptofuture,{tickerCsvValue},{quoteAsset},{contractSize},{symbol.TickSize},{symbol.StepSize},{symbol.ClobPairId},{minOrderSize},{priceMagnifier},{strikeMultiplier}";
+                    $"{Market.ToLowerInvariant()},{baseAsset}{quoteAsset},cryptofuture,{tickerCsvValue},{quoteAsset},{contractSize},{symbol.TickSize},{symbol.StepSize},{tickerCsvValue},{minOrderSize},{priceMagnifier},{strikeMultiplier}";
             }
         }
     }
