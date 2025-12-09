@@ -3,16 +3,16 @@
     <Configuration Condition=" '$(Configuration)' == '' ">Release</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <TargetFramework>net9.0</TargetFramework>
-    <Product>QuantConnect.Brokerages.Template</Product>
+    <Product>QuantConnect.Brokerages.dYdX</Product>
     <AssemblyName>QuantConnect.Brokerages.dYdX</AssemblyName>
     <RootNamespace>QuantConnect.Brokerages.dYdX</RootNamespace>
-    <AssemblyTitle>QuantConnect.Brokerages.Template</AssemblyTitle>
+    <AssemblyTitle>QuantConnect.Brokerages.dYdX</AssemblyTitle>
     <OutputType>Library</OutputType>
     <OutputPath>bin\$(Configuration)\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    <Description>QuantConnect LEAN Template Brokerage: Brokerage Template plugin for Lean</Description>
+    <Description>QuantConnect LEAN dYdX Brokerage: dYdX Brokerage plugin for Lean</Description>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugType>full</DebugType>
