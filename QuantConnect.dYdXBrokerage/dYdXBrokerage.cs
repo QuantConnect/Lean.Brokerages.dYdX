@@ -47,6 +47,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler,
     {
         [JsonProperty(PropertyName = "license")]
         public string License;
+
         [JsonProperty(PropertyName = "organizationId")]
         public string OrganizationId;
     }
@@ -96,7 +97,6 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler,
     /// Creates a new instance
     /// </summary>
     /// <param name="privateKey">The private key for the wallet</param>
-    /// <param name="mnemonic">The mnemonic phrase (12, 15, 18, 21, or 24 words)</param>
     /// <param name="address">The address associated with the mnemonic</param>
     /// <param name="chainId">Chain ID for the wallet</param>
     /// <param name="subaccountNumber">The subaccount number to use for this wallet</param>
@@ -108,7 +108,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler,
     /// <param name="orderProvider">The order provider instance</param>
     /// <param name="aggregator">The aggregator instance</param>
     /// <param name="job">The live node packet</param>
-    public dYdXBrokerage(string privateKey, string mnemonic, string address, string chainId, uint subaccountNumber,
+    public dYdXBrokerage(string privateKey, string address, string chainId, uint subaccountNumber,
         string nodeRestUrl,
         string nodeGrpcUrl,
         string indexerRestUrl,
@@ -121,7 +121,6 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler,
     {
         Initialize(
             privateKey,
-            mnemonic,
             address,
             chainId,
             subaccountNumber,
@@ -141,7 +140,6 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler,
 
     private void Initialize(
         string privateKeyHex,
-        string mnemonic,
         string address,
         string chainId,
         uint subaccountNumber,
@@ -190,7 +188,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler,
                 return client;
             });
 
-            var wallet = BuildWallet(ApiClient, privateKeyHex, mnemonic, address, chainId, subaccountNumber);
+            var wallet = BuildWallet(ApiClient, privateKeyHex, null, address, chainId, subaccountNumber);
 
             if (wallet == null)
             {
@@ -342,7 +340,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler,
     {
         try
         {
-            const int productId = 176;
+            const int productId = ProductId;
             var userId = Globals.UserId;
             var token = Globals.UserToken;
             var organizationId = Globals.OrganizationID;
@@ -352,20 +350,22 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler,
             {
                 throw new ArgumentException("Invalid api user id or token, cannot authenticate subscription.");
             }
+
             // Compile the information we want to send when validating
             var information = new Dictionary<string, object>()
             {
-                {"productId", productId},
-                {"machineName", Environment.MachineName},
-                {"userName", Environment.UserName},
-                {"domainName", Environment.UserDomainName},
-                {"os", Environment.OSVersion}
+                { "productId", productId },
+                { "machineName", Environment.MachineName },
+                { "userName", Environment.UserName },
+                { "domainName", Environment.UserDomainName },
+                { "os", Environment.OSVersion }
             };
             // IP and Mac Address Information
             try
             {
                 var interfaceDictionary = new List<Dictionary<string, object>>();
-                foreach (var nic in NetworkInterface.GetAllNetworkInterfaces().Where(nic => nic.OperationalStatus == OperationalStatus.Up))
+                foreach (var nic in NetworkInterface.GetAllNetworkInterfaces()
+                             .Where(nic => nic.OperationalStatus == OperationalStatus.Up))
                 {
                     var interfaceInformation = new Dictionary<string, object>();
                     // Get UnicastAddresses
@@ -384,23 +384,28 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler,
                         interfaceDictionary.Add(interfaceInformation);
                     }
                 }
+
                 information.Add("networkInterfaces", interfaceDictionary);
             }
             catch (Exception)
             {
                 // NOP, not necessary to crash if fails to extract and add this information
             }
+
             // Include our OrganizationId is specified
             if (!string.IsNullOrEmpty(organizationId))
             {
                 information.Add("organizationId", organizationId);
             }
+
             var request = new RestRequest("modules/license/read", Method.POST) { RequestFormat = DataFormat.Json };
-            request.AddParameter("application/json", JsonConvert.SerializeObject(information), ParameterType.RequestBody);
+            request.AddParameter("application/json", JsonConvert.SerializeObject(information),
+                ParameterType.RequestBody);
             api.TryRequest(request, out ModulesReadLicenseRead result);
             if (!result.Success)
             {
-                throw new InvalidOperationException($"Request for subscriptions from web failed, Response Errors : {string.Join(',', result.Errors)}");
+                throw new InvalidOperationException(
+                    $"Request for subscriptions from web failed, Response Errors : {string.Join(',', result.Errors)}");
             }
 
             var encryptedData = result.License;
@@ -415,6 +420,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler,
                 {
                     organizationId = result.OrganizationId;
                 }
+
                 // Create our combination key
                 var password = $"{token}-{organizationId}";
                 var key = SHA256.HashData(Encoding.UTF8.GetBytes(password));
@@ -437,6 +443,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler,
                     stamp = jsonInfo["stamped"]?.Value<int>();
                 }
             }
+
             // Validate our conditions
             if (!expirationDate.HasValue || !isValid.HasValue || !stamp.HasValue)
             {
@@ -449,13 +456,17 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler,
             {
                 throw new InvalidOperationException("Invalid API response.");
             }
+
             if (!isValid.Value)
             {
-                throw new ArgumentException($"Your subscription is not valid, please check your product subscriptions on our website.");
+                throw new ArgumentException(
+                    $"Your subscription is not valid, please check your product subscriptions on our website.");
             }
+
             if (expirationDate < nowUtc)
             {
-                throw new ArgumentException($"Your subscription expired {expirationDate}, please renew in order to use this product.");
+                throw new ArgumentException(
+                    $"Your subscription expired {expirationDate}, please renew in order to use this product.");
             }
         }
         catch (Exception e)

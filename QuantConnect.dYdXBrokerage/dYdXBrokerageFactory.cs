@@ -40,13 +40,15 @@ namespace QuantConnect.Brokerages.dYdX
         public override Dictionary<string, string> BrokerageData => new()
         {
             { "dydx-private-key-hex", Config.Get("dydx-private-key-hex") },
-            { "dydx-mnemonic", Config.Get("dydx-mnemonic") },
             { "dydx-address", Config.Get("dydx-address") },
             { "dydx-subaccount-number", Config.Get("dydx-subaccount-number") },
             { "dydx-node-api-rest", Config.Get("dydx-node-api-rest", "https://test-dydx-rest.kingnodes.com") },
             { "dydx-node-api-grpc", Config.Get("dydx-node-api-grpc", "https://test-dydx-rest.kingnodes.com:443") },
             { "dydx-indexer-api-rest", Config.Get("dydx-indexer-api-rest", "https://indexer.v4testnet.dydx.exchange") },
-            { "dydx-indexer-api-wss", Config.Get("dydx-indexer-api-wss", "wss://indexer.v4testnet.dydx.exchange/v4/ws") },
+            {
+                "dydx-indexer-api-wss",
+                Config.Get("dydx-indexer-api-wss", "wss://indexer.v4testnet.dydx.exchange/v4/ws")
+            },
             { "dydx-chain-id", Config.Get("dydx-chain-id") }
         };
 
@@ -61,10 +63,7 @@ namespace QuantConnect.Brokerages.dYdX
         /// Gets a brokerage model that can be used to model this brokerage's unique behaviors
         /// </summary>
         /// <param name="orderProvider">The order provider</param>
-        public override IBrokerageModel GetBrokerageModel(IOrderProvider orderProvider)
-        {
-            throw new NotImplementedException();
-        }
+        public override IBrokerageModel GetBrokerageModel(IOrderProvider orderProvider) => new dYdXBrokerageModel();
 
         /// <summary>
         /// Creates a new IBrokerage instance
@@ -75,15 +74,7 @@ namespace QuantConnect.Brokerages.dYdX
         public override IBrokerage CreateBrokerage(LiveNodePacket job, IAlgorithm algorithm)
         {
             var errors = new List<string>();
-            var keyErrors = new List<string>();
-            var privateKey = Read<string>(job.BrokerageData, "dydx-private-key-hex", keyErrors);
-            var mnemonic = Read<string>(job.BrokerageData, "dydx-mnemonic", keyErrors);
-
-            if (string.IsNullOrEmpty(privateKey) && string.IsNullOrEmpty(mnemonic))
-            {
-                errors.AddRange(keyErrors);
-            }
-
+            var privateKey = Read<string>(job.BrokerageData, "dydx-private-key-hex", errors);
             var address = Read<string>(job.BrokerageData, "dydx-address", errors);
             var subaccountNumber = Read<uint>(job.BrokerageData, "dydx-subaccount-number", errors);
             var nodeRestUrl = Read<string>(job.BrokerageData, "dydx-node-api-rest", errors);
@@ -104,7 +95,6 @@ namespace QuantConnect.Brokerages.dYdX
             var brokerage =
                 new dYdXBrokerage(
                     privateKey,
-                    mnemonic,
                     address,
                     chainId,
                     subaccountNumber,
@@ -126,7 +116,7 @@ namespace QuantConnect.Brokerages.dYdX
         /// </summary>
         public override void Dispose()
         {
-            throw new NotImplementedException();
+            // not used
         }
     }
 }

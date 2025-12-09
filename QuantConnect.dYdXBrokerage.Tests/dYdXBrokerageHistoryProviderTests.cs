@@ -144,7 +144,6 @@ namespace QuantConnect.Brokerages.dYdX.Tests
             Brokerage CreateBrokerage()
             {
                 var privateKey = Config.Get("dydx-private-key-hex");
-                var mnemonic = Config.Get("dydx-mnemonic");
                 var address = Config.Get("dydx-address");
                 var subaccountNumber = checked((uint)Config.GetInt("dydx-subaccount-number"));
                 var nodeUrlRest = Config.Get("dydx-node-api-rest");
@@ -155,7 +154,6 @@ namespace QuantConnect.Brokerages.dYdX.Tests
 
                 return new dYdXBrokerage(
                     privateKey,
-                    mnemonic,
                     address,
                     chainId,
                     subaccountNumber,

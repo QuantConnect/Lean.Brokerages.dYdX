@@ -182,6 +182,8 @@ public class Wallet
 
         public Builder FromMnemonic(string mnemonic)
         {
+            throw new NotImplementedException();
+
             if (string.IsNullOrWhiteSpace(mnemonic))
                 throw new ArgumentException("Mnemonic cannot be null or empty", nameof(mnemonic));
 
