@@ -1,0 +1,14 @@
+{
+  "data-folder": "../../../../Lean/Data/",
+
+  // dydx configuration
+  "dydx-private-key-hex": "e92a6595c934c991d3b3e987ea9b3125bf61a076deab3a9cb519787b7b3e8d77",
+  "dydx-address": "dydx14zzueazeh0hj67cghhf9jypslcf9sh2n5k6art", //DYDX_TEST_ADDRESS
+  "dydx-subaccount-number": 0,
+  "dydx-node-api-rest": "https://test-dydx-rest.kingnodes.com",
+  "dydx-node-api-grpc": "https://test-dydx-grpc.kingnodes.com:443",
+  "dydx-indexer-api-rest": "https://indexer.v4testnet.dydx.exchange",
+  "dydx-indexer-api-wss": "wss://indexer.v4testnet.dydx.exchange/v4/ws",
+  "dydx-chain-id": "dydx-testnet-4"
+
+}

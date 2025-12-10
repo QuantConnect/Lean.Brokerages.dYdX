@@ -1,0 +1,79 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Release</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <TargetFramework>net9.0</TargetFramework>
+    <Product>QuantConnect.Brokerages.dYdX</Product>
+    <AssemblyName>QuantConnect.Brokerages.dYdX</AssemblyName>
+    <RootNamespace>QuantConnect.Brokerages.dYdX</RootNamespace>
+    <AssemblyTitle>QuantConnect.Brokerages.dYdX</AssemblyTitle>
+    <OutputType>Library</OutputType>
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Description>QuantConnect LEAN dYdX Brokerage: dYdX Brokerage plugin for Lean</Description>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugType>full</DebugType>
+    <OutputPath>bin\Debug\</OutputPath>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <OutputPath>bin\Release\</OutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\Lean\Common\Properties\SharedAssemblyInfo.cs" Link="Properties\SharedAssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Protobuf Include="Protos\amino\amino.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\cosmos\base\abci\v1beta1\abci.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\cosmos\base\query\v1beta1\pagination.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\cosmos\base\v1beta1\coin.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\cosmos\base\tendermint\v1beta1\query.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\cosmos\crypto\multisig\v1beta1\multisig.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\cosmos\crypto\secp256k1\keys.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\cosmos\msg\v1\msg.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\cosmos\tx\signing\v1beta1\signing.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\cosmos\tx\v1beta1\service.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\cosmos\tx\v1beta1\tx.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\cosmos_proto\cosmos.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\gogoproto\gogo.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\google\api\annotations.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\google\api\http.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\tendermint\abci\types.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\tendermint\crypto\keys.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\tendermint\crypto\proof.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\tendermint\types\block.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\tendermint\types\evidence.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\tendermint\types\params.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\tendermint\types\types.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\tendermint\types\validator.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\tendermint\version\types.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\tendermint\p2p\types.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\dydxprotocol\clob\block_rate_limit_config.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\dydxprotocol\clob\clob_pair.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\dydxprotocol\clob\equity_tier_limit_config.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\dydxprotocol\clob\liquidations.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\dydxprotocol\clob\liquidations_config.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\dydxprotocol\clob\matches.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\dydxprotocol\clob\operation.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\dydxprotocol\clob\order.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\dydxprotocol\clob\order_removals.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\dydxprotocol\clob\tx.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\dydxprotocol\subaccounts\asset_position.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\dydxprotocol\subaccounts\perpetual_position.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\dydxprotocol\subaccounts\subaccount.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
+    <PackageReference Include="Google.Protobuf" Version="3.30.2" />
+    <PackageReference Include="Grpc.Net.Client" Version="2.70.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.71.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
+    <PackageReference Include="QuantConnect.Brokerages" Version="2.5.*" />
+  </ItemGroup>
+</Project>
