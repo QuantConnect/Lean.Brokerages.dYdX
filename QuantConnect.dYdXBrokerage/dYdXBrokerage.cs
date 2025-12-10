@@ -148,7 +148,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
             return;
         }
 
-        ValidateSubscription();
+        // ValidateSubscription();
 
         base.Initialize(indexerWssUrl, new WebSocketClientWrapper(), null, null, null);
 
