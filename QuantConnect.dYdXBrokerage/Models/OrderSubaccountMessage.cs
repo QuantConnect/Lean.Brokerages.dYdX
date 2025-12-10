@@ -14,6 +14,7 @@
  */
 
 using Newtonsoft.Json;
+using QuantConnect.Orders;
 
 namespace QuantConnect.Brokerages.dYdX.Models;
 
@@ -21,5 +22,10 @@ public class OrderSubaccountMessage
 {
     [JsonProperty("id")] public string Id { get; set; }
     [JsonProperty("clientId")] public uint ClientId { get; set; }
+    [JsonProperty("side")] public OrderDirection Side { get; set; }
     [JsonProperty("status")] public string Status { get; set; }
+    [JsonProperty("totalFilled")] public decimal TotalFilled { get; set; }
+    [JsonProperty("price")] public decimal Price { get; set; }
+    [JsonProperty("updatedAt")] public string UpdatedAt { get; set; }
+
 }

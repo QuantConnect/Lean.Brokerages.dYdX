@@ -37,7 +37,7 @@ public partial class dYdXBrokerage
     public override List<Order> GetOpenOrders()
     {
         var orders = new List<Order>();
-        var dydxOrders = ApiClient.Indexer.GetOpenOrders(Wallet);
+        var dydxOrders = _apiClient.Indexer.GetOpenOrders(Wallet);
         foreach (var dydxOrder in dydxOrders)
         {
             var order = _market.ParseOrder(dydxOrder);
@@ -62,7 +62,7 @@ public partial class dYdXBrokerage
         // This can be extended to support multiple subaccounts if needed.
         try
         {
-            var positionsResponse = ApiClient.Indexer.GetPerpetualPositions(Wallet);
+            var positionsResponse = _apiClient.Indexer.GetPerpetualPositions(Wallet);
             var holdings = new List<Holding>();
 
             if (positionsResponse?.Positions == null)
@@ -107,7 +107,7 @@ public partial class dYdXBrokerage
     /// <returns>The current cash balance for each currency available for trading</returns>
     public override List<CashAmount> GetCashBalance()
     {
-        var balances = ApiClient.Node.GetCashBalance(Wallet);
+        var balances = _apiClient.Node.GetCashBalance(Wallet);
         return balances
             .Balances
             .Select(b => new CashAmount(b.Amount, b.Denom.LazyToUpper()))
@@ -140,7 +140,7 @@ public partial class dYdXBrokerage
                 // those are updated on WS stream events, and that's why we need to wait for it
                 var dydxOrder = _market.CreateOrder(order, clientId);
                 _pendingOrders[clientId] = Tuple.Create(resetEvent, order);
-                result = ApiClient.Node.PlaceOrder(Wallet, dydxOrder, gasLimit);
+                result = _apiClient.Node.PlaceOrder(Wallet, dydxOrder, gasLimit);
                 if (result.Code == 0)
                 {
                     OnOrderEvent(new OrderEvent(order, DateTime.UtcNow, OrderFee.Zero, "dYdX Order Event")
@@ -227,7 +227,7 @@ public partial class dYdXBrokerage
             {
                 var dydxOrder = _market.CreateOrder(order, clientId);
                 var gasLimit = (order.Properties as dYdXOrderProperties)?.GasLimit ?? Domain.Market.DefaultGasLimit;
-                result = ApiClient.Node.CancelOrder(Wallet, dydxOrder, gasLimit);
+                result = _apiClient.Node.CancelOrder(Wallet, dydxOrder, gasLimit);
             }
             catch (Exception ex)
             {
@@ -271,8 +271,8 @@ public partial class dYdXBrokerage
             return;
         }
 
-        _ = ApiClient;
-        Log.Trace($"Connected {ApiClient}");
+        _ = _apiClient;
+        Log.Trace($"Connected {_apiClient}");
 
         _connectionConfirmedEvent.Reset();
 

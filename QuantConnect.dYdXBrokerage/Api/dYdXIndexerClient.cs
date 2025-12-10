@@ -22,8 +22,7 @@ namespace QuantConnect.Brokerages.dYdX.Api;
 
 public class dYdXIndexerClient(string baseUrl)
 {
-    private readonly Lazy<dYdXRestClient> _lazyRestClient = new(() => new dYdXRestClient(baseUrl.TrimEnd('/')));
-    private dYdXRestClient _restClient => _lazyRestClient.Value;
+    private readonly dYdXRestClient _restClient = new(baseUrl.TrimEnd('/'));
 
     /// <summary>
     /// Calls indexer to get perpetual positions, see https://docs.dydx.xyz/indexer-client/http#list-positions

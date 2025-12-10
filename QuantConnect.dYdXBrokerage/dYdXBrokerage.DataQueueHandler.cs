@@ -25,7 +25,7 @@ public partial class dYdXBrokerage
     /// <summary>
     /// Returns true if we're currently connected to the broker
     /// </summary>
-    public override bool IsConnected => (_apiClientLazy?.IsValueCreated ?? false) && WebSocket?.IsOpen == true;
+    public override bool IsConnected => _apiClient != null && WebSocket?.IsOpen == true;
 
     /// <summary>
     /// Subscribe to the specified configuration

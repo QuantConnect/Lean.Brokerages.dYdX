@@ -68,23 +68,16 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
     private static readonly TimeSpan WaitPlaceOrderEventTimeout = TimeSpan.FromSeconds(15);
     private Domain.Market _market;
     private SymbolPropertiesDatabaseSymbolMapper _symbolMapper;
+    private dYdXApiClient _apiClient;
 
     private static readonly SymbolPropertiesDatabase SymbolPropertiesDatabase =
         SymbolPropertiesDatabase.FromDataFolder();
 
     private BrokerageConcurrentMessageHandler<WebSocketMessage> _messageHandler;
 
-    private Lazy<dYdXApiClient> _apiClientLazy;
-
     private readonly ManualResetEvent _connectionConfirmedEvent = new(false);
 
-
     private Wallet Wallet { get; set; }
-
-    /// <summary>
-    /// API client
-    /// </summary>
-    private dYdXApiClient ApiClient => _apiClientLazy.Value;
 
     /// <summary>
     /// Parameterless constructor for brokerage
@@ -167,7 +160,8 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
         if (_aggregator == null)
         {
             var aggregatorName = Config.Get("data-aggregator", "QuantConnect.Lean.Engine.DataFeeds.AggregationManager");
-            Log.Trace($"{nameof(dYdXBrokerage)}.{nameof(Initialize)}: found no data aggregator instance, creating {aggregatorName}");
+            Log.Trace(
+                $"{nameof(dYdXBrokerage)}.{nameof(Initialize)}: found no data aggregator instance, creating {aggregatorName}");
             _aggregator = Composer.Instance.GetExportedValueByTypeName<IDataAggregator>(aggregatorName);
         }
 
@@ -181,29 +175,24 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
         // can be null if dYdXBrokerage is used as DataQueueHandler only
         if (_algorithm != null)
         {
-            _apiClientLazy = new Lazy<dYdXApiClient>(() =>
+            if (string.IsNullOrEmpty(address))
             {
-                if (string.IsNullOrEmpty(address))
-                {
-                    OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Error, -1, "Address is missing"));
-                    throw new Exception("Address is missing");
-                }
-
-                var client = GetApiClient(nodeRestUrl, nodeGrpcUrl, indexerRestUrl);
-                return client;
-            });
-
-            var wallet = BuildWallet(ApiClient, privateKeyHex, address, chainId, subaccountNumber);
-
-            if (wallet == null)
-            {
-                OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Error, -1, "Mnemonic and PrivateKey"));
-                throw new Exception("Mnemonic and PrivateKey is missing");
+                OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Error, -1, "Address is missing"));
+                throw new Exception("Address is missing");
             }
 
-            Wallet = wallet;
-            _market = new Domain.Market(wallet, _symbolMapper, SymbolPropertiesDatabase, ApiClient);
+            _apiClient = GetApiClient(nodeRestUrl, nodeGrpcUrl, indexerRestUrl);
+            try
+            {
+                Wallet = BuildWallet(_apiClient, privateKeyHex, address, chainId, subaccountNumber);
+            }
+            catch (Exception e)
+            {
+                OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Error, -1, e.Message));
+                throw;
+            }
 
+            _market = new Domain.Market(Wallet, _symbolMapper, SymbolPropertiesDatabase, _apiClient);
             Connect();
         }
     }
@@ -294,11 +283,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
 
     public override void Dispose()
     {
-        if (_apiClientLazy?.IsValueCreated == true)
-        {
-            ApiClient.DisposeSafely();
-        }
-
+        _apiClient?.DisposeSafely();
         _connectionConfirmedEvent?.DisposeSafely();
         _connectionRateLimiter?.DisposeSafely();
         SubscriptionManager?.DisposeSafely();
@@ -443,7 +428,8 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
         }
         catch (Exception e)
         {
-            Log.Error($"{nameof(dYdXBrokerage)}.{nameof(ValidateSubscription)}: Failed during validation, shutting down. Error : {e.Message}");
+            Log.Error(
+                $"{nameof(dYdXBrokerage)}.{nameof(ValidateSubscription)}: Failed during validation, shutting down. Error : {e.Message}");
             Environment.Exit(1);
         }
     }

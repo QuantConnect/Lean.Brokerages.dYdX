@@ -38,20 +38,15 @@ namespace QuantConnect.Brokerages.dYdX.Api;
 public class dYdXNodeClient : IDisposable
 {
     private readonly string _restUrl;
-    private readonly Lazy<dYdXRestClient> _lazyRestClient;
-    private readonly Lazy<GrpcChannel> _lazyGrpcChannel;
-    private readonly Lazy<TxService.ServiceClient> _lazyTxService;
-    private readonly Lazy<TendermintService.ServiceClient> _lazyTendermintService;
-
-    private dYdXRestClient RestClient => _lazyRestClient.Value;
-    private GrpcChannel GrpcChannel => _lazyGrpcChannel.Value;
-    private TxService.ServiceClient TxService => _lazyTxService.Value;
-    private TendermintService.ServiceClient TendermintService => _lazyTendermintService.Value;
+    private readonly dYdXRestClient RestClient;
+    private readonly GrpcChannel GrpcChannel;
+    private readonly TxService.ServiceClient TxService;
+    private readonly TendermintService.ServiceClient TendermintService;
 
     public dYdXNodeClient(string restUrl, string grpcUrl)
     {
         _restUrl = restUrl;
-        _lazyRestClient = new(() => new dYdXRestClient(_restUrl.TrimEnd('/')));
+        RestClient = new dYdXRestClient(_restUrl.TrimEnd('/'));
 
         var grpcChannelOptions = new GrpcChannelOptions
         {
@@ -64,9 +59,9 @@ public class dYdXNodeClient : IDisposable
         };
 
         var uri = new Uri(grpcUrl.TrimEnd('/'));
-        _lazyGrpcChannel = new(() => GrpcChannel.ForAddress(uri, grpcChannelOptions));
-        _lazyTxService = new(() => new TxService.ServiceClient(GrpcChannel));
-        _lazyTendermintService = new(() => new TendermintService.ServiceClient(GrpcChannel));
+        GrpcChannel =GrpcChannel.ForAddress(uri, grpcChannelOptions);
+        TxService = new TxService.ServiceClient(GrpcChannel);
+        TendermintService = new TendermintService.ServiceClient(GrpcChannel);
     }
 
     public uint GetLatestBlockHeight()
@@ -217,9 +212,6 @@ public class dYdXNodeClient : IDisposable
 
     public void Dispose()
     {
-        if (_lazyGrpcChannel.IsValueCreated)
-        {
-            _lazyGrpcChannel.Value.DisposeSafely();
-        }
+        GrpcChannel.DisposeSafely();
     }
 }

@@ -204,6 +204,9 @@ public class Wallet
             if (string.IsNullOrWhiteSpace(_address))
                 throw new InvalidOperationException("Address must be specified");
 
+            if (string.IsNullOrWhiteSpace(_chainId))
+                throw new InvalidOperationException("Network ChainId must be specified");
+
             // derive private key if needed
             string privateKeyHex = _privateKeyHex;
             if (privateKeyHex == null && _mnemonic != null)
