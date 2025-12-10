@@ -163,7 +163,6 @@ namespace QuantConnect.Brokerages.dYdX.Tests
                     indexerUrlWss,
                     null,
                     null,
-                    new AggregationManager(),
                     null
                 );
             }

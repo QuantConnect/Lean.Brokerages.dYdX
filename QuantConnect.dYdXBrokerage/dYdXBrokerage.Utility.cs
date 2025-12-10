@@ -21,7 +21,8 @@ public partial class dYdXBrokerage
 {
     private static uint RandomUInt32()
     {
-        return (uint)(Random.Shared.Next(1 << 30)) << 2 | (uint)(Random.Shared.Next(1 << 2));
+        // we do not expect collisions here, so 31 bit is enough
+        return (uint)Random.Shared.Next();
     }
 
 }

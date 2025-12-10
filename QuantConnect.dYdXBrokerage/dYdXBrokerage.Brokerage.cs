@@ -272,6 +272,8 @@ public partial class dYdXBrokerage
         _ = ApiClient;
         Log.Trace($"Connected {ApiClient}");
 
+        _connectionConfirmedEvent.Reset();
+
         WebSocket.Open += OnReconnect;
         ConnectSync();
     }
@@ -290,7 +292,7 @@ public partial class dYdXBrokerage
             }
             catch (Exception ex)
             {
-                Log.Error($"dYdXBrokerage.OnReconnect: {ex.Message}");
+                Log.Error($"{nameof(dYdXBrokerage)}.{nameof(OnReconnect)}: {ex.Message}");
             }
         });
     }

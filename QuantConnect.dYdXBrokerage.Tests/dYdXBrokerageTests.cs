@@ -77,7 +77,6 @@ namespace QuantConnect.Brokerages.dYdX.Tests
                 indexerUrlWss,
                 algorithm.Object,
                 orderProvider,
-                new AggregationManager(),
                 new LiveNodePacket());
         }
 

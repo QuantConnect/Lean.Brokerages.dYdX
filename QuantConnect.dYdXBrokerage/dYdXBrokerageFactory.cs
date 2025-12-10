@@ -42,14 +42,24 @@ namespace QuantConnect.Brokerages.dYdX
             { "dydx-private-key-hex", Config.Get("dydx-private-key-hex") },
             { "dydx-address", Config.Get("dydx-address") },
             { "dydx-subaccount-number", Config.Get("dydx-subaccount-number") },
-            { "dydx-node-api-rest", Config.Get("dydx-node-api-rest", "https://test-dydx-rest.kingnodes.com") },
-            { "dydx-node-api-grpc", Config.Get("dydx-node-api-grpc", "https://test-dydx-rest.kingnodes.com:443") },
-            { "dydx-indexer-api-rest", Config.Get("dydx-indexer-api-rest", "https://indexer.v4testnet.dydx.exchange") },
-            {
-                "dydx-indexer-api-wss",
-                Config.Get("dydx-indexer-api-wss", "wss://indexer.v4testnet.dydx.exchange/v4/ws")
-            },
-            { "dydx-chain-id", Config.Get("dydx-chain-id") }
+
+            // mainnet
+            // use KingNodes by default for the reason of better testings, and no rest endpoint for OEGS
+            { "dydx-node-api-rest", Config.Get("dydx-node-api-rest", "https://dydx-ops-rest.kingnodes.com:443") },
+            { "dydx-node-api-grpc", Config.Get("dydx-node-api-grpc", "https://dydx-ops-grpc.kingnodes.com:443") },
+            { "dydx-indexer-api-rest", Config.Get("dydx-indexer-api-rest", "https://indexer.dydx.trade/v4") },
+            { "dydx-indexer-api-wss", Config.Get("dydx-indexer-api-wss", "wss://indexer.dydx.trade/v4/ws")},
+            { "dydx-chain-id", Config.Get("dydx-chain-id", "dydx-mainnet-1") }
+
+            // testnet
+            // { "dydx-node-api-rest", Config.Get("dydx-node-api-rest", "https://test-dydx-rest.kingnodes.com") },
+            // { "dydx-node-api-grpc", Config.Get("dydx-node-api-grpc", "https://test-dydx-rest.kingnodes.com:443") },
+            // { "dydx-indexer-api-rest", Config.Get("dydx-indexer-api-rest", "https://indexer.v4testnet.dydx.exchange") },
+            // {
+            //     "dydx-indexer-api-wss",
+            //     Config.Get("dydx-indexer-api-wss", "wss://indexer.v4testnet.dydx.exchange/v4/ws")
+            // },
+            // { "dydx-chain-id", Config.Get("dydx-chain-id", "dydx-testnet-4") }
         };
 
         /// <summary>
@@ -86,12 +96,9 @@ namespace QuantConnect.Brokerages.dYdX
             if (errors.Count != 0)
             {
                 // if we had errors then we can't create the instance
-                throw new ArgumentException(string.Join(Environment.NewLine, errors));
+                throw new ArgumentException($"{nameof(dYdXBrokerageFactory)} has not found of config key(s):" + string.Join(Environment.NewLine, errors));
             }
 
-            var aggregator = Composer.Instance.GetExportedValueByTypeName<IDataAggregator>(
-                Config.Get("data-aggregator", "QuantConnect.Lean.Engine.DataFeeds.AggregationManager"),
-                forceTypeNameOnExisting: false);
             var brokerage =
                 new dYdXBrokerage(
                     privateKey,
@@ -104,7 +111,6 @@ namespace QuantConnect.Brokerages.dYdX
                     indexerWssUrl,
                     algorithm,
                     algorithm?.Transactions,
-                    aggregator,
                     job);
             Composer.Instance.AddPart<IDataQueueHandler>(brokerage);
 

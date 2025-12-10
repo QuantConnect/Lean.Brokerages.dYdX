@@ -191,7 +191,7 @@ public partial class dYdXBrokerage
                     break;
 
                 default:
-                    Log.Error($"dYdXBrokerage.HandleOrders(): order status not handled: {dydxOrder.Status}");
+                    Log.Error($"{nameof(dYdXBrokerage)}.{nameof(HandleOrders)}: order status not handled: {dydxOrder.Status}");
                     break;
             }
         }
@@ -205,7 +205,7 @@ public partial class dYdXBrokerage
             if (leanOrder == null)
             {
                 // not our order, nothing else to do here
-                Log.Error($"dYdXBrokerage.HandleFills(): order not found: {order.Id}");
+                Log.Error($"{nameof(dYdXBrokerage)}.{nameof(HandleFills)}: order not found: {order.Id}");
                 return;
             }
 
@@ -221,7 +221,7 @@ public partial class dYdXBrokerage
                     : fill.QuoteAmount;
                 var updTime = Time.ParseDate(fill.CreatedAt);
                 var orderFee = OrderFee.Zero;
-                if (fill.Fee.HasValue && fill.Fee.Value > 0)
+                if (fill.Fee is > 0)
                 {
                     var symbol = _symbolMapper.GetLeanSymbol(fill.Ticker, SecurityType.CryptoFuture, MarketName);
                     var symbolProps = SymbolPropertiesDatabase.GetSymbolProperties(MarketName, symbol,
@@ -274,7 +274,7 @@ public partial class dYdXBrokerage
     {
         foreach (var update in updates)
         {
-            if (update.OraclePrices == null || !update.OraclePrices.Any())
+            if (update.OraclePrices == null)
             {
                 continue;
             }

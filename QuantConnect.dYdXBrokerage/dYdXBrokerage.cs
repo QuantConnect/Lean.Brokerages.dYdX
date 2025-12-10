@@ -29,6 +29,7 @@ using QuantConnect.Api;
 using QuantConnect.Brokerages.dYdX.Api;
 using QuantConnect.Brokerages.dYdX.Domain;
 using QuantConnect.Brokerages.dYdX.Models.WebSockets;
+using QuantConnect.Configuration;
 using QuantConnect.Data;
 using QuantConnect.Interfaces;
 using QuantConnect.Logging;
@@ -75,7 +76,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
 
     private Lazy<dYdXApiClient> _apiClientLazy;
 
-    private ManualResetEvent _connectionConfirmedEvent = new(false);
+    private readonly ManualResetEvent _connectionConfirmedEvent = new(false);
 
 
     private Wallet Wallet { get; set; }
@@ -115,7 +116,6 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
         string indexerWssUrl,
         IAlgorithm algorithm,
         IOrderProvider orderProvider,
-        IDataAggregator aggregator,
         LiveNodePacket job) :
         base(MarketName)
     {
@@ -130,7 +130,6 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
             indexerWssUrl,
             algorithm,
             orderProvider,
-            aggregator,
             job);
 
         _subscriptionManager = new EventBasedDataQueueHandlerSubscriptionManager();
@@ -149,7 +148,6 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
         string indexerWssUrl,
         IAlgorithm algorithm,
         IOrderProvider orderProvider,
-        IDataAggregator aggregator,
         LiveNodePacket job)
     {
         if (IsInitialized)
@@ -163,8 +161,15 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
 
         _job = job;
         _algorithm = algorithm;
-        _aggregator = aggregator;
         _orderProvider = orderProvider;
+
+        _aggregator = Composer.Instance.GetPart<IDataAggregator>();
+        if (_aggregator == null)
+        {
+            var aggregatorName = Config.Get("data-aggregator", "QuantConnect.Lean.Engine.DataFeeds.AggregationManager");
+            Log.Trace($"{nameof(dYdXBrokerage)}.{nameof(Initialize)}: found no data aggregator instance, creating {aggregatorName}");
+            _aggregator = Composer.Instance.GetExportedValueByTypeName<IDataAggregator>(aggregatorName);
+        }
 
         _symbolMapper = new SymbolPropertiesDatabaseSymbolMapper(MarketName);
 
@@ -438,7 +443,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
         }
         catch (Exception e)
         {
-            Log.Error($"ValidateSubscription(): Failed during validation, shutting down. Error : {e.Message}");
+            Log.Error($"{nameof(dYdXBrokerage)}.{nameof(ValidateSubscription)}: Failed during validation, shutting down. Error : {e.Message}");
             Environment.Exit(1);
         }
     }
