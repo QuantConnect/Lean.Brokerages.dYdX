@@ -20,6 +20,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using QuantConnect.Brokerages.dYdX.Models;
 using QuantConnect.Brokerages.dYdX.Models.WebSockets;
+using QuantConnect.dYdXBrokerage.Cosmos.Tx;
 using QuantConnect.Logging;
 using QuantConnect.Orders;
 using QuantConnect.Orders.Fees;
@@ -184,37 +185,53 @@ public partial class dYdXBrokerage
                     break;
 
                 case "FILLED":
-                    var orderFills = contents.Fills?
-                        .Where(x => x.OrderId == dydxOrder.Id)
-                        .ToList();
-                    HandleFills(dydxOrder, orderFills);
+                    HandleFills(dydxOrder, contents);
                     break;
 
                 default:
-                    Log.Error($"{nameof(dYdXBrokerage)}.{nameof(HandleOrders)}: order status not handled: {dydxOrder.Status}");
+                    Log.Error(
+                        $"{nameof(dYdXBrokerage)}.{nameof(HandleOrders)}: order status not handled: {dydxOrder.Status}");
                     break;
             }
         }
     }
 
-    private void HandleFills(OrderSubaccountMessage order, List<FillSubaccountMessage> orderFills)
+    private void HandleFills(OrderSubaccountMessage dydxOrder, SubaccountsUpdateMessage messageContents)
     {
         try
         {
-            var leanOrder = _orderProvider.GetOrdersByBrokerageId(order.Id)?.SingleOrDefault();
+            var leanOrder = _orderProvider.GetOrdersByBrokerageId(dydxOrder.Id)?.SingleOrDefault();
             if (leanOrder == null)
             {
                 // not our order, nothing else to do here
-                Log.Error($"{nameof(dYdXBrokerage)}.{nameof(HandleFills)}: order not found: {order.Id}");
+                Log.Error($"{nameof(dYdXBrokerage)}.{nameof(HandleFills)}: order not found: {dydxOrder.Id}");
                 return;
             }
 
-            var finalOrderStatus = Domain.Market.ParseOrderStatus(order.Status);
-            var fills = orderFills.ToList();
+            var finalOrderStatus = Domain.Market.ParseOrderStatus(dydxOrder.Status);
+            var orderFills = messageContents.Fills?
+                .Where(x => x.OrderId == dydxOrder.Id)
+                .ToList();
 
-            for (int i = 0; i < fills.Count; i++)
+            if (orderFills == null)
             {
-                var fill = fills[i];
+                // TODO: need to check if this is a valid scenario
+                // case when order is fully filled but no fills are present in the message
+                // fee is not present in the message
+                var orderEvent = new OrderEvent
+                (
+                    leanOrder.Id, leanOrder.Symbol, Time.ParseDate(dydxOrder.UpdatedAt), OrderStatus.Filled,
+                    dydxOrder.Side, dydxOrder.Price, dydxOrder.TotalFilled,
+                    OrderFee.Zero, $"dYdX Order Event {dydxOrder.Side}"
+                );
+
+                OnOrderEvent(orderEvent);
+                return;
+            }
+
+            for (int i = 0; i < orderFills.Count; i++)
+            {
+                var fill = orderFills[i];
                 var fillPrice = fill.Price;
                 var fillQuantity = fill.Side == OrderDirection.Sell
                     ? -fill.QuoteAmount
@@ -223,20 +240,22 @@ public partial class dYdXBrokerage
                 var orderFee = OrderFee.Zero;
                 if (fill.Fee is > 0)
                 {
-                    var symbol = _symbolMapper.GetLeanSymbol(fill.Ticker, SecurityType.CryptoFuture, MarketName);
-                    var symbolProps = SymbolPropertiesDatabase.GetSymbolProperties(MarketName, symbol,
-                        SecurityType.CryptoFuture, Currencies.USD);
+                    var symbolProps = SymbolPropertiesDatabase.GetSymbolProperties(
+                        MarketName,
+                        leanOrder.Symbol,
+                        SecurityType.CryptoFuture,
+                        Currencies.USD);
 
                     // TODO: fee in not in docs, but present in response. Not sure about fee currency
                     // see ref. https://docs.dydx.xyz/types/fill_subaccount_message
                     // might not be sent if zero fee
-                    orderFee = new OrderFee(new CashAmount(fill.Fee.Value, symbolProps.QuoteCurrency));
+                    orderFee = new OrderFee(new CashAmount(fill.Fee.Value, leanOrder.PriceCurrency));
                 }
 
                 // no current order status
                 // TODO: check if we can get partially filled order status at all
                 // their API does not contain it https://docs.dydx.xyz/types/order_status#orderstatus
-                var status = i == fills.Count - 1 ? finalOrderStatus : OrderStatus.PartiallyFilled;
+                var status = i == orderFills.Count - 1 ? finalOrderStatus : OrderStatus.PartiallyFilled;
                 var orderEvent = new OrderEvent
                 (
                     leanOrder.Id, leanOrder.Symbol, updTime, status,

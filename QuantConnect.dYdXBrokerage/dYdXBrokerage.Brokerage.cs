@@ -130,13 +130,15 @@ public partial class dYdXBrokerage
 
         var resetEvent = new ManualResetEventSlim(false);
         var clientId = RandomUInt32();
+        var gasLimit = (order.Properties as dYdXOrderProperties)?.GasLimit ?? Domain.Market.DefaultGasLimit;
         dYdXPlaceOrderResponse result = null;
         _messageHandler.WithLockedStream(() =>
         {
             try
             {
+                // dYdX Market consumes block height and oracle price to create order
+                // those are updated on WS stream events, and that's why we need to wait for it
                 var dydxOrder = _market.CreateOrder(order, clientId);
-                var gasLimit = (order.Properties as dYdXOrderProperties)?.GasLimit ?? Domain.Market.DefaultGasLimit;
                 _pendingOrders[clientId] = Tuple.Create(resetEvent, order);
                 result = ApiClient.Node.PlaceOrder(Wallet, dydxOrder, gasLimit);
                 if (result.Code == 0)
