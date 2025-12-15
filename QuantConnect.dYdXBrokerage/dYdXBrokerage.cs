@@ -20,6 +20,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
+using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -57,11 +58,15 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
     private const SecurityType SecurityType = QuantConnect.SecurityType.CryptoFuture;
     private const int ProductId = 421;
 
+    // TODO: Confirm whether the indexer WebSocket rate limits are global (shared across all channels)
+    // or applied per category/channel.
+    // Ref: https://docs.dydx.xyz/concepts/trading/limits/rate-limits#indexer-rate-limits
+    private const int MaxSymbolsPerConnection = 16;
+
     private IAlgorithm _algorithm;
     private IOrderProvider _orderProvider;
     private IDataAggregator _aggregator;
     private LiveNodePacket _job;
-    private readonly EventBasedDataQueueHandlerSubscriptionManager _subscriptionManager;
     private RateGate _connectionRateLimiter;
     private readonly ConcurrentDictionary<uint, Tuple<ManualResetEventSlim, Order>> _pendingOrders = new();
     private readonly ConcurrentDictionary<string, uint> _orderBrokerIdToClientIdMap = new();
@@ -124,10 +129,6 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
             algorithm,
             orderProvider,
             job);
-
-        _subscriptionManager = new EventBasedDataQueueHandlerSubscriptionManager();
-        _subscriptionManager.SubscribeImpl += (s, t) => Subscribe(s);
-        _subscriptionManager.UnsubscribeImpl += (s, t) => Unsubscribe(s);
     }
 
     private void Initialize(
@@ -171,6 +172,25 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
 
         // Rate gate limiter useful for API/WS calls
         _connectionRateLimiter = new RateGate(2, TimeSpan.FromSeconds(1));
+
+        var maximumWebSocketConnections = Config.GetInt("dydx-maximum-websocket-connections");
+        int maxSymbolsPerWebsocketConnection =
+            Config.GetInt("dydx-maximum-symbols-per-connection", MaxSymbolsPerConnection);
+        var symbolWeights = maximumWebSocketConnections > 0 ? FetchSymbolWeights(indexerRestUrl) : null;
+
+        var subscriptionManager = new BrokerageMultiWebSocketSubscriptionManager(
+            indexerWssUrl,
+            maxSymbolsPerWebsocketConnection,
+            maximumWebSocketConnections,
+            symbolWeights,
+            () => new WebSocketClientWrapper(),
+            Subscribe,
+            Unsubscribe,
+            OnDataMessage,
+            TimeSpan.Zero,
+            _connectionRateLimiter);
+
+        SubscriptionManager = subscriptionManager;
 
         // can be null if dYdXBrokerage is used as DataQueueHandler only
         if (_algorithm != null)
@@ -239,21 +259,54 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
     /// <param name="symbols">The symbols to be added keyed by SecurityType</param>
     protected override bool Subscribe(IEnumerable<Symbol> symbols)
     {
-        // throw new NotImplementedException();
+        // Not actually used as we use BrokerageMultiWebSocketSubscriptionManager
         return true;
     }
 
-    private bool Subscribe(string channel, string id = null, bool batched = false)
+    /// <summary>
+    /// Subscribes to the requested symbol (using an individual streaming channel)
+    /// </summary>
+    /// <param name="webSocket">The websocket instance</param>
+    /// <param name="symbol">The symbol to subscribe</param>
+    private bool Subscribe(IWebSocket webSocket, Symbol symbol)
+    {
+        var brokerageSymbol = _symbolMapper.GetBrokerageSymbol(symbol);
+        SubscribeToWebSocketChannel(
+            webSocket,
+            "v4_orderbook",
+            brokerageSymbol,
+            batched: false);
+
+        SubscribeToWebSocketChannel(
+            webSocket,
+            "v4_trades",
+            brokerageSymbol,
+            batched: false);
+
+        return true;
+    }
+
+    /// <summary>
+    /// Subscribes the main WebSocket to a specified channel with optional parameters for ID and batching.
+    /// </summary>
+    /// <param name="channel">The name of the channel to subscribe to.</param>
+    /// <param name="id">An optional identifier for the subscription.</param>
+    /// <param name="batched">A boolean value indicating whether to batch the subscription.</param>
+    private void Subscribe(string channel, string id = null, bool batched = false)
     {
         _connectionRateLimiter.WaitToProceed();
-        WebSocket.Send(JsonConvert.SerializeObject(new SubscribeRequestSchema
+        SubscribeToWebSocketChannel(WebSocket, channel, id, batched);
+    }
+
+    private void SubscribeToWebSocketChannel(IWebSocket ws, string channel, string id = null, bool batched = false)
+    {
+        ws.Send(JsonConvert.SerializeObject(new SubscribeRequestSchema
             {
                 Channel = channel,
                 Id = id,
                 Batched = batched
             }
         ));
-        return true;
     }
 
     /// <summary>
@@ -262,7 +315,39 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
     /// <param name="symbols">The symbols to be removed keyed by SecurityType</param>
     private bool Unsubscribe(IEnumerable<Symbol> symbols)
     {
+        // Not used as we use BrokerageMultiWebSocketSubscriptionManager
         throw new NotImplementedException();
+    }
+
+    /// <summary>
+    /// Removes the specified symbols from the subscription
+    /// </summary>
+    /// <param name="webSocket">The websocket instance</param>
+    /// <param name="symbol">The symbol to unsubscribe</param>
+    private bool Unsubscribe(IWebSocket webSocket, Symbol symbol)
+    {
+        var brokerageSymbol = _symbolMapper.GetBrokerageSymbol(symbol);
+        UnsubscribeFromWebSocketChannel(
+            webSocket,
+            "v4_orderbook",
+            brokerageSymbol);
+
+        UnsubscribeFromWebSocketChannel(
+            webSocket,
+            "v4_trades",
+            brokerageSymbol);
+
+        return true;
+    }
+
+    private void UnsubscribeFromWebSocketChannel(IWebSocket ws, string channel, string id = null)
+    {
+        ws.Send(JsonConvert.SerializeObject(new UnsubscribeRequestSchema
+            {
+                Channel = channel,
+                Id = id
+            }
+        ));
     }
 
     /// <summary>

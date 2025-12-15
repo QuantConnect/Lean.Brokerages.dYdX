@@ -22,4 +22,12 @@ public abstract class BaseResponseSchema
     [JsonProperty("type")] public string Type { get; set; }
     [JsonProperty("connection_id")] public string ConnectionId { get; set; }
     [JsonProperty("message_id")] public int MessageId { get; set; }
+    /// <summary>
+    /// Feed type identifier.
+    /// </summary>
+    [JsonProperty("channel")] public string Channel { get; set; }
+    /// <summary>
+    /// Selector for channel-specific data. Only used in some channels.
+    /// </summary>
+    [JsonProperty("id")] public string Id { get; set; }
 }
