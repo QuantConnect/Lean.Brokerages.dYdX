@@ -393,33 +393,6 @@ public partial class dYdXBrokerage
         }
     }
 
-    private Dictionary<Symbol, int> FetchSymbolWeights(string indexerRestUrl)
-    {
-        var weights = new Dictionary<Symbol, int>();
-        var data = Extensions.DownloadData($"{indexerRestUrl}/v4/perpetualMarkets");
-        // foreach (var ticker in client.Market.GetTickers(category))
-        // {
-        //     Symbol leanSymbol;
-        //     try
-        //     {
-        //         leanSymbol = _symbolMapper.GetLeanSymbol(ticker.Symbol, GetSecurityType(category), MarketName);
-        //     }
-        //     catch (Exception)
-        //     {
-        //         //The api returns some currently unsupported symbols we can ignore these right now
-        //         continue;
-        //     }
-        //
-        //     var weight = (ticker.Turnover24Hours > int.MaxValue)
-        //         ? int.MaxValue
-        //         : decimal.ToInt32(ticker.Turnover24Hours ?? 0);
-        //
-        //     weights.Add(leanSymbol, weight);
-        // }
-
-        return weights;
-    }
-
     private void HandleOrderBookSnapshot(JObject jObj)
     {
         var orderbookSnapshot = jObj.ToObject<DataResponseSchema<Orderbook>>();

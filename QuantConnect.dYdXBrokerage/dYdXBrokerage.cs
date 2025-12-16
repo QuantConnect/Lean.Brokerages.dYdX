@@ -29,6 +29,7 @@ using Newtonsoft.Json.Linq;
 using QuantConnect.Api;
 using QuantConnect.Brokerages.dYdX.Api;
 using QuantConnect.Brokerages.dYdX.Domain;
+using QuantConnect.Brokerages.dYdX.Models;
 using QuantConnect.Brokerages.dYdX.Models.WebSockets;
 using QuantConnect.Configuration;
 using QuantConnect.Data;
@@ -176,7 +177,9 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
         var maximumWebSocketConnections = Config.GetInt("dydx-maximum-websocket-connections");
         int maxSymbolsPerWebsocketConnection =
             Config.GetInt("dydx-maximum-symbols-per-connection", MaxSymbolsPerConnection);
-        var symbolWeights = maximumWebSocketConnections > 0 ? FetchSymbolWeights(indexerRestUrl) : null;
+        var symbolWeights = maximumWebSocketConnections > 0
+            ? FetchSymbolWeights(_symbolMapper, indexerRestUrl)
+            : null;
 
         var subscriptionManager = new BrokerageMultiWebSocketSubscriptionManager(
             indexerWssUrl,
@@ -517,5 +520,40 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
                 $"{nameof(dYdXBrokerage)}.{nameof(ValidateSubscription)}: Failed during validation, shutting down. Error : {e.Message}");
             Environment.Exit(1);
         }
+    }
+
+
+    private static Dictionary<Symbol, int> FetchSymbolWeights(
+        SymbolPropertiesDatabaseSymbolMapper symbolMapper,
+        string indexerRestUrl)
+    {
+        var weights = new Dictionary<Symbol, int>();
+        var data = Extensions.DownloadData($"{indexerRestUrl}/v4/perpetualMarkets");
+        var markets = JsonConvert.DeserializeObject<ExchangeInfo>(data);
+        var totalMarketVolume24H = markets.Symbols.Values
+            .Select(x => x.Volume24H.ToDecimal())
+            .Sum();
+        foreach (var brokerageSymbol in markets.Symbols.Values)
+        {
+            Symbol leanSymbol;
+            try
+            {
+                leanSymbol = symbolMapper.GetLeanSymbol(brokerageSymbol.Ticker, SecurityType.CryptoFuture, MarketName);
+            }
+            catch (Exception)
+            {
+                //The api returns some currently unsupported symbols we can ignore these right now
+                continue;
+            }
+
+            // normalize volume24H by total market volume24H
+            // so the total weight of all symbols is less or equal int.MaxValue
+            var normalizedVolume24H = brokerageSymbol.Volume24H.ToDecimal() / totalMarketVolume24H;
+            var weight = (int)(int.MaxValue * normalizedVolume24H);
+
+            weights.Add(leanSymbol, weight);
+        }
+
+        return weights;
     }
 }
