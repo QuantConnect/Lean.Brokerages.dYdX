@@ -19,8 +19,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Net.NetworkInformation;
-using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -150,7 +150,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
             return;
         }
 
-        // ValidateSubscription();
+        ValidateSubscription();
 
         base.Initialize(indexerWssUrl, new WebSocketClientWrapper(), null, null, null);
 
@@ -443,9 +443,14 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
                 information.Add("organizationId", organizationId);
             }
 
-            var request = new RestRequest("modules/license/read", Method.POST) { RequestFormat = DataFormat.Json };
-            request.AddParameter("application/json", JsonConvert.SerializeObject(information),
-                ParameterType.RequestBody);
+            // Create HTTP request
+            var request = new HttpRequestMessage(HttpMethod.Post, "modules/license/read");
+            request.Content = new StringContent(
+                JsonConvert.SerializeObject(information),
+                Encoding.UTF8,
+                "application/json"
+            );
+
             api.TryRequest(request, out ModulesReadLicenseRead result);
             if (!result.Success)
             {

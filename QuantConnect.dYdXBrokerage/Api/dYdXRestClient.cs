@@ -16,58 +16,67 @@
 using System;
 using System.Diagnostics;
 using System.Net;
+using System.Net.Http;
 using Newtonsoft.Json;
 using QuantConnect.Logging;
 using QuantConnect.Util;
-using RestSharp;
 
 namespace QuantConnect.Brokerages.dYdX.Api;
 
-public class dYdXRestClient(string baseUrl) : IDisposable
+public class dYdXRestClient : IDisposable
 {
-    private readonly RestClient _restClient = new(baseUrl);
+    private readonly HttpClient _httpClient;
     private readonly RateGate _rateGate = new(250, TimeSpan.FromMinutes(1));
+
+    public dYdXRestClient(string baseUrl)
+    {
+        _httpClient = new HttpClient
+        {
+            BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/")
+        };
+    }
 
     public T Get<T>(string path)
     {
         _rateGate.WaitToProceed();
-        var result = _restClient.Execute(new RestRequest(path));
-        return EnsureSuccessAndParse<T>(result);
-    }
 
-    /// <summary>
-    /// Ensures the request executed successfully and returns the parsed business object
-    /// </summary>
-    /// <param name="response">The response to parse</param>
-    /// <typeparam name="T">The type of the response business object</typeparam>
-    /// <returns>The parsed response business object</returns>
-    /// <exception cref="Exception"></exception>
-    [StackTraceHidden]
-    private T EnsureSuccessAndParse<T>(IRestResponse response)
-    {
-        if (response.StatusCode != HttpStatusCode.OK)
+        if (!_httpClient.TryDownloadData(path, out var content, out var code))
         {
             throw new Exception("dYdXRestClient request failed: " +
-                                $"[{(int)response.StatusCode}] {response.StatusDescription}, " +
-                                $"Content: {response.Content}, ErrorMessage: {response.ErrorMessage}");
+                                $"[{(int)(code ?? HttpStatusCode.BadRequest)}], " +
+                                $"Content: {content}");
         }
 
-        T responseObject = default;
-        try
-        {
-            responseObject = JsonConvert.DeserializeObject<T>(response.Content);
-        }
-        catch (Exception e)
-        {
-            throw new Exception("dYdXRestClient failed deserializing response: " +
-                                $"[{(int)response.StatusCode}] {response.StatusDescription}, " +
-                                $"Content: {response.Content}, ErrorMessage: {response.ErrorMessage}", e);
-        }
+        var result = Parse<T>(content);
 
         if (Log.DebuggingEnabled)
         {
             Log.Debug(
-                $"dYdX request for {response.Request.Resource} executed successfully. Response: {response.Content}");
+                $"dYdX request for '{_httpClient.BaseAddress?.AbsoluteUri.TrimEnd('/')}/{path.TrimStart('/')}' executed successfully. Response: {content}");
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Parse business object
+    /// </summary>
+    /// <param name="content">The content to parse</param>
+    /// <typeparam name="T">The type of the response business object</typeparam>
+    /// <returns>The parsed response business object</returns>
+    /// <exception cref="Exception"></exception>
+    [StackTraceHidden]
+    private T Parse<T>(string content)
+    {
+        T responseObject = default;
+        try
+        {
+            responseObject = JsonConvert.DeserializeObject<T>(content);
+        }
+        catch (Exception e)
+        {
+            throw new Exception("dYdXRestClient failed deserializing response: " +
+                                $"Content: {content}", e);
         }
 
         return responseObject;
@@ -76,5 +85,6 @@ public class dYdXRestClient(string baseUrl) : IDisposable
     public void Dispose()
     {
         _rateGate?.DisposeSafely();
+        _httpClient?.DisposeSafely();
     }
 }
