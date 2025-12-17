@@ -271,11 +271,6 @@ public partial class dYdXBrokerage
             return;
         }
 
-        _ = _apiClient;
-        Log.Trace($"Connected {_apiClient}");
-
-        _connectionConfirmedEvent.Reset();
-
         WebSocket.Open += OnReconnect;
         ConnectSync();
     }

@@ -62,6 +62,23 @@ public partial class dYdXBrokerage
     /// <param name="job">Job we're subscribing for</param>
     public void SetJob(LiveNodePacket job)
     {
-        throw new NotImplementedException();
+        Initialize(
+            job.BrokerageData["dydx-private-key-hex"],
+            job.BrokerageData["dydx-address"],
+            job.BrokerageData["dydx-chain-id"],
+            Convert.ToUInt32(job.BrokerageData["dydx-subaccount-number"]),
+            job.BrokerageData["dydx-node-api-rest"],
+            job.BrokerageData["dydx-node-api-grpc"],
+            job.BrokerageData["dydx-indexer-api-rest"],
+            job.BrokerageData["dydx-indexer-api-wss"],
+            algorithm: null,
+            orderProvider: null,
+            job: job
+        );
+
+        if (!IsConnected)
+        {
+            Connect();
+        }
     }
 }

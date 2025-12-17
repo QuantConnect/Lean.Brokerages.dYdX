@@ -117,6 +117,7 @@ public partial class dYdXBrokerage
 
     private void OnConnected(ConnectedResponseSchema _)
     {
+        Log.Trace($"{nameof(dYdXBrokerage)}.{nameof(OnConnected)}(): Connected to websocket");
         _connectionConfirmedEvent.Set();
     }
 
