@@ -107,10 +107,10 @@ public partial class dYdXBrokerage
     /// <returns>The current cash balance for each currency available for trading</returns>
     public override List<CashAmount> GetCashBalance()
     {
-        var balances = _apiClient.Node.GetCashBalance(Wallet);
+        var balances = _apiClient.Indexer.GetCashBalance(Wallet);
         return balances
-            .Balances
-            .Select(b => new CashAmount(b.Amount, b.Denom.LazyToUpper()))
+            .Positions
+            .Select(b => new CashAmount(b.Size.ToDecimal(), b.Symbol.LazyToUpper()))
             .ToList();
     }
 

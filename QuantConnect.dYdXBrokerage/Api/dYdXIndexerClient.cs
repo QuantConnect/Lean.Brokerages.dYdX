@@ -57,4 +57,15 @@ public class dYdXIndexerClient(string baseUrl)
 
         return _restClient.Get<IEnumerable<OrderDto>>(path);
     }
+
+    /// <summary>
+    /// Retrieves the cash balance for a given wallet from the dYdX indexer API. Ref https://docs.dydx.xyz/indexer-client/http#get-asset-positions
+    /// </summary>
+    /// <param name="wallet">Wallet for which to retrieve the cash balance</param>
+    /// <returns>Asset positions for the specified wallet</returns>
+    public AssetPositions GetCashBalance(Wallet wallet)
+    {
+        return _restClient.Get<AssetPositions>(
+            $"/v4/assetPositions?address={wallet.Address}&subaccountNumber={wallet.SubaccountNumber}");
+    }
 }
