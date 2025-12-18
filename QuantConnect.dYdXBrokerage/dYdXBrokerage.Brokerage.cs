@@ -271,6 +271,15 @@ public partial class dYdXBrokerage
             return;
         }
 
+        WebSocket.Error += (sender, error) =>
+        {
+            if (sender is WebSocketClientWrapper { IsOpen: false })
+            {
+                OnMessage(BrokerageMessageEvent.Disconnected(error.Message));
+                _connectionConfirmedEvent.Reset();
+            }
+        };
+
         WebSocket.Open += OnReconnect;
         ConnectSync();
     }
