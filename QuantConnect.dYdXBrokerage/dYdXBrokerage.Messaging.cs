@@ -261,13 +261,15 @@ public partial class dYdXBrokerage
         {
             switch (dydxOrder.Status)
             {
+                case "OPEN":
                 case "BEST_EFFORT_OPENED":
                     if (_pendingOrders.TryRemove(dydxOrder.ClientId, out var tuple))
                     {
-                        var (resetEvent, leanOpenOrder) = tuple;
-                        leanOpenOrder.BrokerId.Add(dydxOrder.Id);
+                        var (resetEvent, leanSubmittedOrder) = tuple;
+                        leanSubmittedOrder.BrokerId.Add(dydxOrder.Id);
                         _orderBrokerIdToClientIdMap.TryAdd(dydxOrder.Id, dydxOrder.ClientId);
-                        OnOrderEvent(new OrderEvent(leanOpenOrder, DateTime.UtcNow, OrderFee.Zero, "dYdX Order Event")
+                        OnOrderEvent(new OrderEvent(leanSubmittedOrder, DateTime.UtcNow, OrderFee.Zero,
+                            "dYdX Order Event")
                         {
                             Status = OrderStatus.Submitted
                         });
