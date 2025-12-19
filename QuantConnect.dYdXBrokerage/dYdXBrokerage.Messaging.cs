@@ -16,11 +16,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using QuantConnect.Brokerages.dYdX.Models;
 using QuantConnect.Brokerages.dYdX.Models.WebSockets;
-using QuantConnect.dYdXBrokerage.Cosmos.Tx;
+using QuantConnect.Data.Market;
 using QuantConnect.Logging;
 using QuantConnect.Orders;
 using QuantConnect.Orders.Fees;
@@ -30,6 +29,9 @@ namespace QuantConnect.Brokerages.dYdX;
 
 public partial class dYdXBrokerage
 {
+    private readonly object _tickLocker = new();
+    private readonly Dictionary<Symbol, DefaultOrderBook> _orderBooks = new();
+
     /// <summary>
     /// Wss message handler
     /// </summary>
@@ -56,6 +58,13 @@ public partial class dYdXBrokerage
 
             var jObj = JObject.Parse(e.Message);
             var topic = jObj.Value<string>("type");
+            if (topic.Equals("error", StringComparison.InvariantCultureIgnoreCase))
+            {
+                var error = jObj.ToObject<ErrorResponseSchema>();
+                OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Error, -1, error.Message));
+                return;
+            }
+
             if (topic.Equals("connected", StringComparison.InvariantCultureIgnoreCase))
             {
                 OnConnected(jObj.ToObject<ConnectedResponseSchema>());
@@ -83,8 +92,47 @@ public partial class dYdXBrokerage
         }
     }
 
+    private void OnDataMessage(WebSocketMessage webSocketMessage)
+    {
+        var e = (WebSocketClientWrapper.TextMessage)webSocketMessage.Data;
+        try
+        {
+            if (Log.DebuggingEnabled)
+            {
+                Log.Debug($"{nameof(dYdXBrokerage)}.{nameof(OnUserMessage)}(): {e.Message}");
+            }
+
+            var jObj = JObject.Parse(e.Message);
+            var topic = jObj.Value<string>("type");
+            if (topic.Equals("error", StringComparison.InvariantCultureIgnoreCase))
+            {
+                var error = jObj.ToObject<ErrorResponseSchema>();
+                OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Error, -1, error.Message));
+                return;
+            }
+
+            var channel = jObj.Value<string>("channel");
+            switch (channel)
+            {
+                case "v4_orderbook":
+                    OnOrderbookUpdate(jObj);
+                    break;
+                case "v4_trades":
+                    OnTradeUpdate(jObj);
+                    break;
+            }
+        }
+        catch (Exception exception)
+        {
+            OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Error, -1,
+                $"Parsing wss message failed. Data: {e.Message} Exception: {exception}"));
+            throw;
+        }
+    }
+
     private void OnConnected(ConnectedResponseSchema _)
     {
+        Log.Trace($"{nameof(dYdXBrokerage)}.{nameof(OnConnected)}(): Connected to websocket");
         _connectionConfirmedEvent.Set();
     }
 
@@ -148,6 +196,79 @@ public partial class dYdXBrokerage
         }
     }
 
+    private void OnOrderbookUpdate(JObject jObj)
+    {
+        var contents = jObj["contents"];
+        if (contents == null) return;
+
+        var topic = jObj.Value<string>("type");
+        switch (topic)
+        {
+            case "subscribed":
+                HandleOrderBookSnapshot(jObj);
+                break;
+
+            case "channel_data":
+                HandleOrderBookDelta(jObj);
+                break;
+            default:
+                Log.Error($"{nameof(dYdXBrokerage)}.{nameof(OnOrderbookUpdate)}: unknown topic: {topic}");
+                break;
+        }
+    }
+
+    private void OnTradeUpdate(JObject jObj)
+    {
+        var contents = jObj["contents"];
+        if (contents == null) return;
+
+        var topic = jObj.Value<string>("type");
+        switch (topic)
+        {
+            case "subscribed":
+                // do nothing as we don't consume old trades
+                break;
+
+            case "channel_data":
+                HandleTrades(jObj);
+                break;
+            default:
+                Log.Error($"{nameof(dYdXBrokerage)}.{nameof(OnOrderbookUpdate)}: unknown topic: {topic}");
+                break;
+        }
+    }
+
+    private void HandleTrades(JObject jObj)
+    {
+        var trades = jObj.ToObject<DataResponseSchema<TradesMessage>>();
+        var symbol = _symbolMapper.GetLeanSymbol(trades.Id, SecurityType.CryptoFuture, MarketName);
+        foreach (var trade in trades.Contents.Trades)
+        {
+            // var tradeValue = trade.Side == OrderSide.Buy ? trade.Value : trade.Value * -1;
+            EmitTradeTick(symbol,
+                Time.ParseDate(trade.CreatedAt),
+                trade.Price,
+                trade.Quantity);
+        }
+    }
+
+    private void EmitTradeTick(Symbol symbol, DateTime time, decimal tradePrice, decimal quantity)
+    {
+        var tick = new Tick
+        {
+            Symbol = symbol,
+            Value = tradePrice,
+            Quantity = quantity,
+            Time = time,
+            TickType = TickType.Trade
+        };
+
+        lock (_tickLocker)
+        {
+            _aggregator.Update(tick);
+        }
+    }
+
     private void HandleOrders(SubaccountsUpdateMessage contents)
     {
         var contentsOrders = contents.Orders;
@@ -155,13 +276,15 @@ public partial class dYdXBrokerage
         {
             switch (dydxOrder.Status)
             {
+                case "OPEN":
                 case "BEST_EFFORT_OPENED":
                     if (_pendingOrders.TryRemove(dydxOrder.ClientId, out var tuple))
                     {
-                        var (resetEvent, leanOpenOrder) = tuple;
-                        leanOpenOrder.BrokerId.Add(dydxOrder.Id);
+                        var (resetEvent, leanSubmittedOrder) = tuple;
+                        leanSubmittedOrder.BrokerId.Add(dydxOrder.Id);
                         _orderBrokerIdToClientIdMap.TryAdd(dydxOrder.Id, dydxOrder.ClientId);
-                        OnOrderEvent(new OrderEvent(leanOpenOrder, DateTime.UtcNow, OrderFee.Zero, "dYdX Order Event")
+                        OnOrderEvent(new OrderEvent(leanSubmittedOrder, DateTime.UtcNow, OrderFee.Zero,
+                            "dYdX Order Event")
                         {
                             Status = OrderStatus.Submitted
                         });
@@ -215,18 +338,7 @@ public partial class dYdXBrokerage
 
             if (orderFills == null)
             {
-                // TODO: need to check if this is a valid scenario
-                // case when order is fully filled but no fills are present in the message
-                // fee is not present in the message
-                var orderEvent = new OrderEvent
-                (
-                    leanOrder.Id, leanOrder.Symbol, Time.ParseDate(dydxOrder.UpdatedAt), OrderStatus.Filled,
-                    dydxOrder.Side, dydxOrder.Price, dydxOrder.TotalFilled,
-                    OrderFee.Zero, $"dYdX Order Event {dydxOrder.Side}"
-                );
-
-                OnOrderEvent(orderEvent);
-                return;
+                throw new Exception($"No fills found for order {leanOrder.Id} (brokerage id: {dydxOrder.Id})");
             }
 
             for (int i = 0; i < orderFills.Count; i++)
@@ -240,12 +352,6 @@ public partial class dYdXBrokerage
                 var orderFee = OrderFee.Zero;
                 if (fill.Fee is > 0)
                 {
-                    var symbolProps = SymbolPropertiesDatabase.GetSymbolProperties(
-                        MarketName,
-                        leanOrder.Symbol,
-                        SecurityType.CryptoFuture,
-                        Currencies.USD);
-
                     // TODO: fee in not in docs, but present in response. Not sure about fee currency
                     // see ref. https://docs.dydx.xyz/types/fill_subaccount_message
                     // might not be sent if zero fee
@@ -302,6 +408,107 @@ public partial class dYdXBrokerage
             {
                 _market.UpdateOraclePrice(priceKvp.Key, priceKvp.Value.OraclePrice);
             }
+        }
+    }
+
+    private void HandleOrderBookSnapshot(JObject jObj)
+    {
+        var orderbookSnapshot = jObj.ToObject<DataResponseSchema<Orderbook>>();
+        var symbol = _symbolMapper.GetLeanSymbol(orderbookSnapshot.Id, SecurityType.CryptoFuture, MarketName);
+
+        if (!_orderBooks.TryGetValue(symbol, out var orderBook))
+        {
+            orderBook = new DefaultOrderBook(symbol);
+            _orderBooks[symbol] = orderBook;
+        }
+        else
+        {
+            orderBook.BestBidAskUpdated -= OnBestBidAskUpdated;
+            orderBook.Clear();
+        }
+
+        UpdateOrderBook(orderBook, orderbookSnapshot.Contents);
+
+        orderBook.BestBidAskUpdated += OnBestBidAskUpdated;
+        if (orderBook.BestBidPrice == 0 && orderBook.BestAskPrice == 0)
+        {
+            // nothing to emit, can happen with illiquid assets
+            return;
+        }
+
+        EmitQuoteTick(symbol, orderBook.BestBidPrice, orderBook.BestBidSize, orderBook.BestAskPrice,
+            orderBook.BestAskSize);
+    }
+
+    private void HandleOrderBookDelta(JObject jObj)
+    {
+        var orderbookUpdate = jObj.ToObject<DataResponseSchema<Orderbook>>();
+        var symbol = _symbolMapper.GetLeanSymbol(orderbookUpdate.Id, SecurityType.CryptoFuture, MarketName);
+
+        if (!_orderBooks.TryGetValue(symbol, out var orderBook))
+        {
+            Log.Error($"Attempting to update a non existent order book for {symbol}");
+            return;
+        }
+
+        UpdateOrderBook(orderBook, orderbookUpdate.Contents);
+    }
+
+    private void UpdateOrderBook(DefaultOrderBook orderBook, Orderbook orderbook)
+    {
+        if (orderbook.Bids != null)
+        {
+            foreach (var row in orderbook.Bids)
+            {
+                if (row.Size == 0)
+                {
+                    orderBook.RemoveBidRow(row.Price);
+                }
+                else
+                {
+                    orderBook.UpdateBidRow(row.Price, row.Size);
+                }
+            }
+        }
+
+        if (orderbook.Asks != null)
+        {
+            foreach (var row in orderbook.Asks)
+            {
+                if (row.Size == 0)
+                {
+                    orderBook.RemoveAskRow(row.Price);
+                }
+                else
+                {
+                    orderBook.UpdateAskRow(row.Price, row.Size);
+                }
+            }
+        }
+    }
+
+    private void OnBestBidAskUpdated(object sender, BestBidAskUpdatedEventArgs e)
+    {
+        EmitQuoteTick(e.Symbol, e.BestBidPrice, e.BestBidSize, e.BestAskPrice, e.BestAskSize);
+    }
+
+    private void EmitQuoteTick(Symbol symbol, decimal bidPrice, decimal bidSize, decimal askPrice, decimal askSize)
+    {
+        var tick = new Tick
+        {
+            AskPrice = askPrice,
+            BidPrice = bidPrice,
+            Time = DateTime.UtcNow,
+            Symbol = symbol,
+            TickType = TickType.Quote,
+            AskSize = askSize,
+            BidSize = bidSize,
+        };
+        tick.SetValue();
+
+        lock (_tickLocker)
+        {
+            _aggregator.Update(tick);
         }
     }
 }

@@ -75,11 +75,6 @@ public class dYdXNodeClient : IDisposable
         return accountResponse.Account;
     }
 
-    public dYdXAccountBalances GetCashBalance(Wallet wallet)
-    {
-        return RestClient.Get<dYdXAccountBalances>($"/cosmos/bank/v1beta1/balances/{wallet.Address}");
-    }
-
     public dYdXPlaceOrderResponse PlaceOrder(Wallet wallet, Order order, ulong gasLimit)
     {
         var txBody = BuildPlaceOrderBodyTxBody(order);

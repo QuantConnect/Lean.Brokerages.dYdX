@@ -107,10 +107,11 @@ public partial class dYdXBrokerage
     /// <returns>The current cash balance for each currency available for trading</returns>
     public override List<CashAmount> GetCashBalance()
     {
-        var balances = _apiClient.Node.GetCashBalance(Wallet);
+        var balances = _apiClient.Indexer.GetCashBalance(Wallet);
         return balances
-            .Balances
-            .Select(b => new CashAmount(b.Amount, b.Denom.LazyToUpper()))
+            .Positions
+            .Where(b => b.Side == Models.Enums.PositionSide.Long)
+            .Select(b => new CashAmount(b.Size, b.Symbol.LazyToUpper()))
             .ToList();
     }
 
@@ -271,10 +272,14 @@ public partial class dYdXBrokerage
             return;
         }
 
-        _ = _apiClient;
-        Log.Trace($"Connected {_apiClient}");
-
-        _connectionConfirmedEvent.Reset();
+        WebSocket.Error += (sender, error) =>
+        {
+            if (sender is WebSocketClientWrapper { IsOpen: false })
+            {
+                _connectionConfirmedEvent.Reset();
+                OnMessage(BrokerageMessageEvent.Disconnected(error.Message));
+            }
+        };
 
         WebSocket.Open += OnReconnect;
         ConnectSync();

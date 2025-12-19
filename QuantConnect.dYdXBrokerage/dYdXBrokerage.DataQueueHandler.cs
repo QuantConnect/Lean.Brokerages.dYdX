@@ -41,7 +41,7 @@ public partial class dYdXBrokerage
         }
 
         var enumerator = _aggregator.Add(dataConfig, newDataAvailableHandler);
-        _subscriptionManager.Subscribe(dataConfig);
+        SubscriptionManager.Subscribe(dataConfig);
 
         return enumerator;
     }
@@ -52,7 +52,7 @@ public partial class dYdXBrokerage
     /// <param name="dataConfig">Subscription config to be removed</param>
     public void Unsubscribe(SubscriptionDataConfig dataConfig)
     {
-        _subscriptionManager.Unsubscribe(dataConfig);
+        SubscriptionManager.Unsubscribe(dataConfig);
         _aggregator.Remove(dataConfig);
     }
 
@@ -62,6 +62,23 @@ public partial class dYdXBrokerage
     /// <param name="job">Job we're subscribing for</param>
     public void SetJob(LiveNodePacket job)
     {
-        throw new NotImplementedException();
+        Initialize(
+            job.BrokerageData.GetValueOrDefault("dydx-private-key-hex"),
+            job.BrokerageData.GetValueOrDefault("dydx-address"),
+            job.BrokerageData.GetValueOrDefault("dydx-chain-id"),
+            Convert.ToUInt32(job.BrokerageData.GetValueOrDefault("dydx-subaccount-number", "0")),
+            job.BrokerageData["dydx-node-api-rest"],
+            job.BrokerageData["dydx-node-api-grpc"],
+            job.BrokerageData["dydx-indexer-api-rest"],
+            job.BrokerageData["dydx-indexer-api-wss"],
+            algorithm: null,
+            orderProvider: null,
+            job: job
+        );
+
+        if (!IsConnected)
+        {
+            Connect();
+        }
     }
 }

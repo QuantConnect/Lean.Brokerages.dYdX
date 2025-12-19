@@ -13,10 +13,14 @@
  * limitations under the License.
  */
 
+using System.Collections.Generic;
+
 namespace QuantConnect.Brokerages.dYdX.Models;
 
-public class dYdXDenomBalance
+public class AssetPositions
 {
-    public string Denom { get; set; }
-    public decimal Amount { get; set; }
+    /// <summary>
+    /// https://docs.dydx.xyz/indexer-client/http#get-asset-positions
+    /// </summary>
+    public IEnumerable<AssetPosition> Positions { get; set; } = [];
 }

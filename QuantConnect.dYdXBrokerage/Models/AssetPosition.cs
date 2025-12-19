@@ -13,15 +13,12 @@
  * limitations under the License.
  */
 
-using System.Collections.Generic;
-using Newtonsoft.Json;
-
 namespace QuantConnect.Brokerages.dYdX.Models;
 
-public class dYdXAccountBalances
+public class AssetPosition
 {
-    /// <summary>
-    /// https://docs.dydx.xyz/node-client/public#get-account-balances
-    /// </summary>
-    public IEnumerable<dYdXDenomBalance> Balances { get; set; } = [];
+    public decimal Size { get; set; }
+    public string Symbol { get; set; }
+    public Enums.PositionSide Side { get; set; }
+    public string AssetId { get; set; }
 }

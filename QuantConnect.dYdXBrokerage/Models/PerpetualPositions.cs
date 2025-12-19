@@ -13,21 +13,17 @@
  * limitations under the License.
  */
 
-using Newtonsoft.Json;
+using System.Collections.Generic;
 
-namespace QuantConnect.Brokerages.dYdX.Models.WebSockets;
+namespace QuantConnect.Brokerages.dYdX.Models;
 
-public abstract class BaseResponseSchema
+/// <summary>
+/// Minimal models for dYdX Indexer v4 perpetual positions endpoint
+/// </summary>
+public class PerpetualPositionsResponse
 {
-    public string Type { get; set; }
-    [JsonProperty("connection_id")] public string ConnectionId { get; set; }
-    [JsonProperty("message_id")] public int MessageId { get; set; }
     /// <summary>
-    /// Feed type identifier.
+    /// Collection of open perpetual positions
     /// </summary>
-    public string Channel { get; set; }
-    /// <summary>
-    /// Selector for channel-specific data. Only used in some channels.
-    /// </summary>
-    public string Id { get; set; }
+    public List<PerpetualPosition> Positions { get; set; } = new();
 }

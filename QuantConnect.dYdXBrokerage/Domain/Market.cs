@@ -100,10 +100,7 @@ public class Market
     {
         var symbol = _symbolMapper.GetLeanSymbol(orderDto.Ticker, SecurityType.CryptoFuture, QuantConnect.Market.dYdX);
 
-        decimal size = 0, price = 0, triggerPrice = 0;
-        if (!string.IsNullOrEmpty(orderDto.Size)) size = orderDto.Size.ToDecimal();
-        if (!string.IsNullOrEmpty(orderDto.Price)) price = orderDto.Price.ToDecimal();
-        if (!string.IsNullOrEmpty(orderDto.TriggerPrice)) triggerPrice = orderDto.TriggerPrice.ToDecimal();
+        decimal size = orderDto.Size, price = orderDto.Price, triggerPrice = orderDto.TriggerPrice;
         var quantity = orderDto.Side switch
         {
             OrderDirection.Buy => size,
@@ -250,7 +247,7 @@ public class Market
         return symbolProperties;
     }
 
-    private void ConfigureShortTermOrder(dYdXOrder dydxOrder, dYdXOrderProperties? orderProperties,
+    private void ConfigureShortTermOrder(dYdXOrder dydxOrder, dYdXOrderProperties orderProperties,
         Models.Symbol marketInfo,
         SymbolProperties symbolProperties, QuantConnect.dYdXBrokerage.dYdXProtocol.Clob.Order.Types.Side side)
     {

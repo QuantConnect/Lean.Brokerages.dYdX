@@ -30,7 +30,7 @@ public class dYdXIndexerClient(string baseUrl)
     /// <param name="wallet">Wallet to retrieve positions for</param>
     /// <param name="status">Filter to retrieve positions with a specific status. If not provided, all positions will be returned regardless of status. Defaults to "OPEN".</param>
     /// <returns></returns>
-    public dYdXPerpetualPositionsResponse GetPerpetualPositions(Wallet wallet, string status = "OPEN")
+    public PerpetualPositionsResponse GetPerpetualPositions(Wallet wallet, string status = "OPEN")
     {
         var path =
             $"/v4/perpetualPositions?address={Uri.EscapeDataString(wallet.Address)}&subaccountNumber={wallet.SubaccountNumber}";
@@ -39,7 +39,7 @@ public class dYdXIndexerClient(string baseUrl)
             path += $"&status={Uri.EscapeDataString(status)}";
         }
 
-        return _restClient.Get<dYdXPerpetualPositionsResponse>(path);
+        return _restClient.Get<PerpetualPositionsResponse>(path);
     }
 
     public ExchangeInfo GetExchangeInfo()
@@ -56,5 +56,16 @@ public class dYdXIndexerClient(string baseUrl)
         }
 
         return _restClient.Get<IEnumerable<OrderDto>>(path);
+    }
+
+    /// <summary>
+    /// Retrieves the cash balance for a given wallet from the dYdX indexer API. Ref https://docs.dydx.xyz/indexer-client/http#get-asset-positions
+    /// </summary>
+    /// <param name="wallet">Wallet for which to retrieve the cash balance</param>
+    /// <returns>Asset positions for the specified wallet</returns>
+    public AssetPositions GetCashBalance(Wallet wallet)
+    {
+        return _restClient.Get<AssetPositions>(
+            $"/v4/assetPositions?address={wallet.Address}&subaccountNumber={wallet.SubaccountNumber}");
     }
 }

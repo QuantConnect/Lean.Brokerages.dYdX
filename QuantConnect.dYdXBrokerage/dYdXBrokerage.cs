@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Net.NetworkInformation;
 using System.Security.Cryptography;
 using System.Text;
@@ -28,6 +29,7 @@ using Newtonsoft.Json.Linq;
 using QuantConnect.Api;
 using QuantConnect.Brokerages.dYdX.Api;
 using QuantConnect.Brokerages.dYdX.Domain;
+using QuantConnect.Brokerages.dYdX.Models;
 using QuantConnect.Brokerages.dYdX.Models.WebSockets;
 using QuantConnect.Configuration;
 using QuantConnect.Data;
@@ -37,7 +39,6 @@ using QuantConnect.Orders;
 using QuantConnect.Packets;
 using QuantConnect.Securities;
 using QuantConnect.Util;
-using RestSharp;
 
 namespace QuantConnect.Brokerages.dYdX;
 
@@ -57,11 +58,15 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
     private const SecurityType SecurityType = QuantConnect.SecurityType.CryptoFuture;
     private const int ProductId = 421;
 
+    // TODO: Confirm whether the indexer WebSocket rate limits are global (shared across all channels)
+    // or applied per category/channel.
+    // Ref: https://docs.dydx.xyz/concepts/trading/limits/rate-limits#indexer-rate-limits
+    private const int MaxSymbolsPerConnection = 16;
+
     private IAlgorithm _algorithm;
     private IOrderProvider _orderProvider;
     private IDataAggregator _aggregator;
     private LiveNodePacket _job;
-    private readonly EventBasedDataQueueHandlerSubscriptionManager _subscriptionManager;
     private RateGate _connectionRateLimiter;
     private readonly ConcurrentDictionary<uint, Tuple<ManualResetEventSlim, Order>> _pendingOrders = new();
     private readonly ConcurrentDictionary<string, uint> _orderBrokerIdToClientIdMap = new();
@@ -124,10 +129,6 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
             algorithm,
             orderProvider,
             job);
-
-        _subscriptionManager = new EventBasedDataQueueHandlerSubscriptionManager();
-        _subscriptionManager.SubscribeImpl += (s, t) => Subscribe(s);
-        _subscriptionManager.UnsubscribeImpl += (s, t) => Unsubscribe(s);
     }
 
     private void Initialize(
@@ -171,6 +172,27 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
 
         // Rate gate limiter useful for API/WS calls
         _connectionRateLimiter = new RateGate(2, TimeSpan.FromSeconds(1));
+
+        var maximumWebSocketConnections = Config.GetInt("dydx-maximum-websocket-connections");
+        int maxSymbolsPerWebsocketConnection =
+            Config.GetInt("dydx-maximum-symbols-per-connection", MaxSymbolsPerConnection);
+        var symbolWeights = maximumWebSocketConnections > 0
+            ? FetchSymbolWeights(_symbolMapper, indexerRestUrl)
+            : null;
+
+        var subscriptionManager = new BrokerageMultiWebSocketSubscriptionManager(
+            indexerWssUrl,
+            maxSymbolsPerWebsocketConnection,
+            maximumWebSocketConnections,
+            symbolWeights,
+            () => new WebSocketClientWrapper(),
+            Subscribe,
+            Unsubscribe,
+            OnDataMessage,
+            TimeSpan.Zero,
+            _connectionRateLimiter);
+
+        SubscriptionManager = subscriptionManager;
 
         // can be null if dYdXBrokerage is used as DataQueueHandler only
         if (_algorithm != null)
@@ -239,21 +261,54 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
     /// <param name="symbols">The symbols to be added keyed by SecurityType</param>
     protected override bool Subscribe(IEnumerable<Symbol> symbols)
     {
-        // throw new NotImplementedException();
+        // Not actually used as we use BrokerageMultiWebSocketSubscriptionManager
         return true;
     }
 
-    private bool Subscribe(string channel, string id = null, bool batched = false)
+    /// <summary>
+    /// Subscribes to the requested symbol (using an individual streaming channel)
+    /// </summary>
+    /// <param name="webSocket">The websocket instance</param>
+    /// <param name="symbol">The symbol to subscribe</param>
+    private bool Subscribe(IWebSocket webSocket, Symbol symbol)
+    {
+        var brokerageSymbol = _symbolMapper.GetBrokerageSymbol(symbol);
+        SubscribeToWebSocketChannel(
+            webSocket,
+            "v4_orderbook",
+            brokerageSymbol,
+            batched: false);
+
+        SubscribeToWebSocketChannel(
+            webSocket,
+            "v4_trades",
+            brokerageSymbol,
+            batched: false);
+
+        return true;
+    }
+
+    /// <summary>
+    /// Subscribes the main WebSocket to a specified channel with optional parameters for ID and batching.
+    /// </summary>
+    /// <param name="channel">The name of the channel to subscribe to.</param>
+    /// <param name="id">An optional identifier for the subscription.</param>
+    /// <param name="batched">A boolean value indicating whether to batch the subscription.</param>
+    private void Subscribe(string channel, string id = null, bool batched = false)
     {
         _connectionRateLimiter.WaitToProceed();
-        WebSocket.Send(JsonConvert.SerializeObject(new SubscribeRequestSchema
+        SubscribeToWebSocketChannel(WebSocket, channel, id, batched);
+    }
+
+    private void SubscribeToWebSocketChannel(IWebSocket ws, string channel, string id = null, bool batched = false)
+    {
+        ws.Send(JsonConvert.SerializeObject(new SubscribeRequestSchema
             {
                 Channel = channel,
                 Id = id,
                 Batched = batched
             }
         ));
-        return true;
     }
 
     /// <summary>
@@ -262,7 +317,39 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
     /// <param name="symbols">The symbols to be removed keyed by SecurityType</param>
     private bool Unsubscribe(IEnumerable<Symbol> symbols)
     {
+        // Not used as we use BrokerageMultiWebSocketSubscriptionManager
         throw new NotImplementedException();
+    }
+
+    /// <summary>
+    /// Removes the specified symbols from the subscription
+    /// </summary>
+    /// <param name="webSocket">The websocket instance</param>
+    /// <param name="symbol">The symbol to unsubscribe</param>
+    private bool Unsubscribe(IWebSocket webSocket, Symbol symbol)
+    {
+        var brokerageSymbol = _symbolMapper.GetBrokerageSymbol(symbol);
+        UnsubscribeFromWebSocketChannel(
+            webSocket,
+            "v4_orderbook",
+            brokerageSymbol);
+
+        UnsubscribeFromWebSocketChannel(
+            webSocket,
+            "v4_trades",
+            brokerageSymbol);
+
+        return true;
+    }
+
+    private void UnsubscribeFromWebSocketChannel(IWebSocket ws, string channel, string id = null)
+    {
+        ws.Send(JsonConvert.SerializeObject(new UnsubscribeRequestSchema
+            {
+                Channel = channel,
+                Id = id
+            }
+        ));
     }
 
     /// <summary>
@@ -355,9 +442,14 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
                 information.Add("organizationId", organizationId);
             }
 
-            var request = new RestRequest("modules/license/read", Method.POST) { RequestFormat = DataFormat.Json };
-            request.AddParameter("application/json", JsonConvert.SerializeObject(information),
-                ParameterType.RequestBody);
+            // Create HTTP request
+            using var request = new HttpRequestMessage(HttpMethod.Post, "modules/license/read");
+            request.Content = new StringContent(
+                JsonConvert.SerializeObject(information),
+                Encoding.UTF8,
+                "application/json"
+            );
+
             api.TryRequest(request, out ModulesReadLicenseRead result);
             if (!result.Success)
             {
@@ -432,5 +524,40 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
                 $"{nameof(dYdXBrokerage)}.{nameof(ValidateSubscription)}: Failed during validation, shutting down. Error : {e.Message}");
             Environment.Exit(1);
         }
+    }
+
+
+    private static Dictionary<Symbol, int> FetchSymbolWeights(
+        SymbolPropertiesDatabaseSymbolMapper symbolMapper,
+        string indexerRestUrl)
+    {
+        var weights = new Dictionary<Symbol, int>();
+        var data = Extensions.DownloadData($"{indexerRestUrl}/v4/perpetualMarkets");
+        var markets = JsonConvert.DeserializeObject<ExchangeInfo>(data);
+        var totalMarketVolume24H = markets.Symbols.Values
+            .Select(x => x.Volume24H)
+            .Sum();
+        foreach (var brokerageSymbol in markets.Symbols.Values)
+        {
+            Symbol leanSymbol;
+            try
+            {
+                leanSymbol = symbolMapper.GetLeanSymbol(brokerageSymbol.Ticker, SecurityType.CryptoFuture, MarketName);
+            }
+            catch (Exception)
+            {
+                //The api returns some currently unsupported symbols we can ignore these right now
+                continue;
+            }
+
+            // normalize volume24H by total market volume24H
+            // so the total weight of all symbols is less or equal int.MaxValue
+            var normalizedVolume24H = brokerageSymbol.Volume24H / totalMarketVolume24H;
+            var weight = (int)(int.MaxValue * normalizedVolume24H);
+
+            weights.Add(leanSymbol, weight);
+        }
+
+        return weights;
     }
 }

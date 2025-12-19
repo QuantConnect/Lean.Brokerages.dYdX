@@ -154,12 +154,14 @@ public class Wallet
         }
 
         public static Builder Create(dYdXApiClient apiClient)
-            => new (apiClient);
+            => new(apiClient);
 
         public Builder FromPrivateKey(string privateKeyHex)
         {
             if (string.IsNullOrWhiteSpace(privateKeyHex))
+            {
                 throw new ArgumentException("Private key cannot be null or empty", nameof(privateKeyHex));
+            }
 
             _privateKeyHex = privateKeyHex;
             _mnemonic = null; // clear conflicting state
@@ -169,7 +171,9 @@ public class Wallet
         public Builder WithAddress(string address)
         {
             if (string.IsNullOrWhiteSpace(address))
+            {
                 throw new ArgumentException("Address cannot be null or empty", nameof(address));
+            }
 
             _address = address;
             return this;
@@ -202,10 +206,14 @@ public class Wallet
         public Wallet Build()
         {
             if (string.IsNullOrWhiteSpace(_address))
+            {
                 throw new InvalidOperationException("Address must be specified");
+            }
 
             if (string.IsNullOrWhiteSpace(_chainId))
+            {
                 throw new InvalidOperationException("Network ChainId must be specified");
+            }
 
             // derive private key if needed
             string privateKeyHex = _privateKeyHex;
@@ -215,7 +223,9 @@ public class Wallet
             }
 
             if (string.IsNullOrWhiteSpace(privateKeyHex))
+            {
                 throw new InvalidOperationException("Private key or mnemonic must be provided");
+            }
 
             var account = _apiClient.Node.GetAccount(_address);
 

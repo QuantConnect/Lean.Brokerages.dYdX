@@ -13,21 +13,9 @@
  * limitations under the License.
  */
 
-using Newtonsoft.Json;
-
 namespace QuantConnect.Brokerages.dYdX.Models.WebSockets;
 
-public abstract class BaseResponseSchema
+public class ErrorResponseSchema : BaseResponseSchema
 {
-    public string Type { get; set; }
-    [JsonProperty("connection_id")] public string ConnectionId { get; set; }
-    [JsonProperty("message_id")] public int MessageId { get; set; }
-    /// <summary>
-    /// Feed type identifier.
-    /// </summary>
-    public string Channel { get; set; }
-    /// <summary>
-    /// Selector for channel-specific data. Only used in some channels.
-    /// </summary>
-    public string Id { get; set; }
+    public string Message { get; set; }
 }

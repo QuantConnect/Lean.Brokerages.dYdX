@@ -13,21 +13,17 @@
  * limitations under the License.
  */
 
+using System.Collections.Generic;
 using Newtonsoft.Json;
+using QuantConnect.Brokerages.dYdX.Models.Converters;
 
-namespace QuantConnect.Brokerages.dYdX.Models.WebSockets;
+namespace QuantConnect.Brokerages.dYdX.Models;
 
-public abstract class BaseResponseSchema
+public class Orderbook
 {
-    public string Type { get; set; }
-    [JsonProperty("connection_id")] public string ConnectionId { get; set; }
-    [JsonProperty("message_id")] public int MessageId { get; set; }
-    /// <summary>
-    /// Feed type identifier.
-    /// </summary>
-    public string Channel { get; set; }
-    /// <summary>
-    /// Selector for channel-specific data. Only used in some channels.
-    /// </summary>
-    public string Id { get; set; }
+    [JsonConverter(typeof(OrderbookEntryArrayConverter))]
+    public List<OrderbookEntry> Bids { get; set; }
+
+    [JsonConverter(typeof(OrderbookEntryArrayConverter))]
+    public List<OrderbookEntry> Asks { get; set; }
 }
