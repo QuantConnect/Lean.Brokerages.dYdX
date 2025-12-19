@@ -42,19 +42,15 @@ public class OrderbookEntryArrayConverter : JsonConverter<List<OrderbookEntry>>
                 var a = (JArray)item;
                 result.Add(new OrderbookEntry
                 {
-                    Price = ((string)a[0]).ToDecimal(),
-                    Size = ((string)a[1]).ToDecimal()
+                    Price = a[0].ToObject<decimal>(),
+                    Size = a[1].ToObject<decimal>()
                 });
             }
             else if (item.Type == JTokenType.Object)
             {
                 // on snapshot
                 // { "price": "...", "size": "..." }
-                result.Add(new OrderbookEntry
-                {
-                    Price = item["price"]!.ToObject<string>().ToDecimal(),
-                    Size = item["size"]!.ToObject<string>().ToDecimal(),
-                });
+                result.Add(item.ToObject<OrderbookEntry>());
             }
         }
 

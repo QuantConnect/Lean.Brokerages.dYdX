@@ -19,9 +19,9 @@ namespace QuantConnect.Brokerages.dYdX.Models.WebSockets;
 
 public abstract class BaseRequestSchema
 {
-    [JsonProperty("type")] public abstract string Type { get; }
-    [JsonProperty("channel")] public string Channel { get; set; }
+    public abstract string Type { get; }
+    public string Channel { get; set; }
 
-    [JsonProperty("id", DefaultValueHandling = DefaultValueHandling.Ignore)]
+    [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
     public string Id { get; set; }
 }

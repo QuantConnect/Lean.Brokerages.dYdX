@@ -19,17 +19,17 @@ namespace QuantConnect.Brokerages.dYdX.Models;
 
 public class Symbol
 {
-    [JsonProperty("clobPairId")] public uint ClobPairId { get; set; }
-    [JsonProperty("oraclePrice")] public decimal OraclePrice { get; set; }
-    [JsonProperty("ticker")] public string Ticker { get; set; }
-    [JsonProperty("status")] public string Status { get; set; }
-    [JsonProperty("tickSize")] public string TickSize { get; set; }
-    [JsonProperty("stepSize")] public string StepSize { get; set; }
-    [JsonProperty("marketType")] public string MarketType { get; set; }
-    [JsonProperty("stepBaseQuantums")] public ulong StepBaseQuantums { get; set; }
-    [JsonProperty("atomicResolution")] public int AtomicResolution { get; set; }
-    [JsonProperty("quantumConversionExponent")] public int QuantumConversionExponent { get; set; }
-    [JsonProperty("subticksPerTick")] public uint SubticksPerTick { get; set; }
-    [JsonProperty("volume24H")] public string Volume24H { get; set; }
-    [JsonProperty("trades24H")] public ulong Trades24H { get; set; }
+    public uint ClobPairId { get; set; }
+    public decimal OraclePrice { get; set; }
+    public string Ticker { get; set; }
+    public string Status { get; set; }
+    public string TickSize { get; set; }
+    public string StepSize { get; set; }
+    public string MarketType { get; set; }
+    public ulong StepBaseQuantums { get; set; }
+    public int AtomicResolution { get; set; }
+    public int QuantumConversionExponent { get; set; }
+    public uint SubticksPerTick { get; set; }
+    public decimal Volume24H { get; set; }
+    public ulong Trades24H { get; set; }
 }

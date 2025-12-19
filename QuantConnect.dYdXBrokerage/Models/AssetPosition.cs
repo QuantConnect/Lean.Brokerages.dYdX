@@ -17,8 +17,8 @@ namespace QuantConnect.Brokerages.dYdX.Models;
 
 public class AssetPosition
 {
-    public string Size { get; set; }
+    public decimal Size { get; set; }
     public string Symbol { get; set; }
-    public string Side { get; set; }
+    public Enums.PositionSide Side { get; set; }
     public string AssetId { get; set; }
 }

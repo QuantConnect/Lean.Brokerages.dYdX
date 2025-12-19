@@ -14,7 +14,6 @@
  */
 
 using System.Collections.Generic;
-using Newtonsoft.Json;
 
 namespace QuantConnect.Brokerages.dYdX.Models;
 
@@ -23,5 +22,5 @@ public class AssetPositions
     /// <summary>
     /// https://docs.dydx.xyz/indexer-client/http#get-asset-positions
     /// </summary>
-    [JsonProperty("positions")] public IEnumerable<AssetPosition> Positions { get; set; } = [];
+    public IEnumerable<AssetPosition> Positions { get; set; } = [];
 }

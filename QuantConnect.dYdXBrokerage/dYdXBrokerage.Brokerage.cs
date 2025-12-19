@@ -110,7 +110,8 @@ public partial class dYdXBrokerage
         var balances = _apiClient.Indexer.GetCashBalance(Wallet);
         return balances
             .Positions
-            .Select(b => new CashAmount(b.Size.ToDecimal(), b.Symbol.LazyToUpper()))
+            .Where(b => b.Side == Models.Enums.PositionSide.Long)
+            .Select(b => new CashAmount(b.Size, b.Symbol.LazyToUpper()))
             .ToList();
     }
 

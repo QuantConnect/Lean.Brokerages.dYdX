@@ -535,7 +535,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
         var data = Extensions.DownloadData($"{indexerRestUrl}/v4/perpetualMarkets");
         var markets = JsonConvert.DeserializeObject<ExchangeInfo>(data);
         var totalMarketVolume24H = markets.Symbols.Values
-            .Select(x => x.Volume24H.ToDecimal())
+            .Select(x => x.Volume24H)
             .Sum();
         foreach (var brokerageSymbol in markets.Symbols.Values)
         {
@@ -552,7 +552,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
 
             // normalize volume24H by total market volume24H
             // so the total weight of all symbols is less or equal int.MaxValue
-            var normalizedVolume24H = brokerageSymbol.Volume24H.ToDecimal() / totalMarketVolume24H;
+            var normalizedVolume24H = brokerageSymbol.Volume24H / totalMarketVolume24H;
             var weight = (int)(int.MaxValue * normalizedVolume24H);
 
             weights.Add(leanSymbol, weight);

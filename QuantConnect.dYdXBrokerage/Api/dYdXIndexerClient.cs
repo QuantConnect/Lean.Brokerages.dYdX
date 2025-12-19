@@ -30,7 +30,7 @@ public class dYdXIndexerClient(string baseUrl)
     /// <param name="wallet">Wallet to retrieve positions for</param>
     /// <param name="status">Filter to retrieve positions with a specific status. If not provided, all positions will be returned regardless of status. Defaults to "OPEN".</param>
     /// <returns></returns>
-    public dYdXPerpetualPositionsResponse GetPerpetualPositions(Wallet wallet, string status = "OPEN")
+    public PerpetualPositionsResponse GetPerpetualPositions(Wallet wallet, string status = "OPEN")
     {
         var path =
             $"/v4/perpetualPositions?address={Uri.EscapeDataString(wallet.Address)}&subaccountNumber={wallet.SubaccountNumber}";
@@ -39,7 +39,7 @@ public class dYdXIndexerClient(string baseUrl)
             path += $"&status={Uri.EscapeDataString(status)}";
         }
 
-        return _restClient.Get<dYdXPerpetualPositionsResponse>(path);
+        return _restClient.Get<PerpetualPositionsResponse>(path);
     }
 
     public ExchangeInfo GetExchangeInfo()

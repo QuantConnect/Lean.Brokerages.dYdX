@@ -232,7 +232,7 @@ public partial class dYdXBrokerage
             // var tradeValue = trade.Side == OrderSide.Buy ? trade.Value : trade.Value * -1;
             EmitTradeTick(symbol,
                 Time.ParseDate(trade.CreatedAt),
-                trade.Price.ToDecimal(),
+                trade.Price,
                 trade.Quantity);
         }
     }
