@@ -63,10 +63,10 @@ public partial class dYdXBrokerage
     public void SetJob(LiveNodePacket job)
     {
         Initialize(
-            job.BrokerageData["dydx-private-key-hex"],
-            job.BrokerageData["dydx-address"],
-            job.BrokerageData["dydx-chain-id"],
-            Convert.ToUInt32(job.BrokerageData["dydx-subaccount-number"]),
+            job.BrokerageData.GetValueOrDefault("dydx-private-key-hex"),
+            job.BrokerageData.GetValueOrDefault("dydx-address"),
+            job.BrokerageData.GetValueOrDefault("dydx-chain-id"),
+            Convert.ToUInt32(job.BrokerageData.GetValueOrDefault("dydx-subaccount-number", "0")),
             job.BrokerageData["dydx-node-api-rest"],
             job.BrokerageData["dydx-node-api-grpc"],
             job.BrokerageData["dydx-indexer-api-rest"],

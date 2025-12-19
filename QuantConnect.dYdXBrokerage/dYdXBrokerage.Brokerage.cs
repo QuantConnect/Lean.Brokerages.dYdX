@@ -276,8 +276,8 @@ public partial class dYdXBrokerage
         {
             if (sender is WebSocketClientWrapper { IsOpen: false })
             {
-                OnMessage(BrokerageMessageEvent.Disconnected(error.Message));
                 _connectionConfirmedEvent.Reset();
+                OnMessage(BrokerageMessageEvent.Disconnected(error.Message));
             }
         };
 

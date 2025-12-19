@@ -247,7 +247,7 @@ public class Market
         return symbolProperties;
     }
 
-    private void ConfigureShortTermOrder(dYdXOrder dydxOrder, dYdXOrderProperties? orderProperties,
+    private void ConfigureShortTermOrder(dYdXOrder dydxOrder, dYdXOrderProperties orderProperties,
         Models.Symbol marketInfo,
         SymbolProperties symbolProperties, QuantConnect.dYdXBrokerage.dYdXProtocol.Clob.Order.Types.Side side)
     {
