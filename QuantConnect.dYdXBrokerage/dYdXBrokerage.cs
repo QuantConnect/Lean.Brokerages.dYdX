@@ -443,7 +443,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
             }
 
             // Create HTTP request
-            var request = new HttpRequestMessage(HttpMethod.Post, "modules/license/read");
+            using var request = new HttpRequestMessage(HttpMethod.Post, "modules/license/read");
             request.Content = new StringContent(
                 JsonConvert.SerializeObject(information),
                 Encoding.UTF8,

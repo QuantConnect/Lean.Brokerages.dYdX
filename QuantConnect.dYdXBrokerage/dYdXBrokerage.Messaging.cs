@@ -58,6 +58,13 @@ public partial class dYdXBrokerage
 
             var jObj = JObject.Parse(e.Message);
             var topic = jObj.Value<string>("type");
+            if (topic.Equals("error", StringComparison.InvariantCultureIgnoreCase))
+            {
+                var error = jObj.ToObject<ErrorResponseSchema>();
+                OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Error, -1, error.Message));
+                return;
+            }
+
             if (topic.Equals("connected", StringComparison.InvariantCultureIgnoreCase))
             {
                 OnConnected(jObj.ToObject<ConnectedResponseSchema>());
@@ -96,6 +103,14 @@ public partial class dYdXBrokerage
             }
 
             var jObj = JObject.Parse(e.Message);
+            var topic = jObj.Value<string>("type");
+            if (topic.Equals("error", StringComparison.InvariantCultureIgnoreCase))
+            {
+                var error = jObj.ToObject<ErrorResponseSchema>();
+                OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Error, -1, error.Message));
+                return;
+            }
+
             var channel = jObj.Value<string>("channel");
             switch (channel)
             {
@@ -211,7 +226,7 @@ public partial class dYdXBrokerage
         switch (topic)
         {
             case "subscribed":
-                HandleTrades(jObj);
+                // do nothing as we don't consume old trades
                 break;
 
             case "channel_data":
@@ -412,35 +427,7 @@ public partial class dYdXBrokerage
             orderBook.Clear();
         }
 
-        if (orderbookSnapshot.Contents.Bids != null)
-        {
-            foreach (var row in orderbookSnapshot.Contents.Bids)
-            {
-                if (row.Size == 0)
-                {
-                    orderBook.RemoveBidRow(row.Price);
-                }
-                else
-                {
-                    orderBook.UpdateBidRow(row.Price, row.Size);
-                }
-            }
-        }
-
-        if (orderbookSnapshot.Contents.Asks != null)
-        {
-            foreach (var row in orderbookSnapshot.Contents.Asks)
-            {
-                if (row.Size == 0)
-                {
-                    orderBook.RemoveAskRow(row.Price);
-                }
-                else
-                {
-                    orderBook.UpdateAskRow(row.Price, row.Size);
-                }
-            }
-        }
+        UpdateOrderBook(orderBook, orderbookSnapshot.Contents);
 
         orderBook.BestBidAskUpdated += OnBestBidAskUpdated;
         if (orderBook.BestBidPrice == 0 && orderBook.BestAskPrice == 0)
@@ -464,9 +451,14 @@ public partial class dYdXBrokerage
             return;
         }
 
-        if (orderbookUpdate.Contents.Bids != null)
+        UpdateOrderBook(orderBook, orderbookUpdate.Contents);
+    }
+
+    private void UpdateOrderBook(DefaultOrderBook orderBook, Orderbook orderbook)
+    {
+        if (orderbook.Bids != null)
         {
-            foreach (var row in orderbookUpdate.Contents.Bids)
+            foreach (var row in orderbook.Bids)
             {
                 if (row.Size == 0)
                 {
@@ -479,9 +471,9 @@ public partial class dYdXBrokerage
             }
         }
 
-        if (orderbookUpdate.Contents.Asks != null)
+        if (orderbook.Asks != null)
         {
-            foreach (var row in orderbookUpdate.Contents.Asks)
+            foreach (var row in orderbook.Asks)
             {
                 if (row.Size == 0)
                 {

@@ -20,5 +20,5 @@ namespace QuantConnect.Brokerages.dYdX.Models.WebSockets;
 public class SubscribeRequestSchema : BaseRequestSchema
 {
     public override string Type => "subscribe";
-    public bool Batched { get; set; }
+    [JsonProperty("batched")] public bool Batched { get; set; }
 }
