@@ -171,6 +171,8 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
         _messageHandler = new BrokerageConcurrentMessageHandler<WebSocketMessage>(OnUserMessage);
 
         // Rate gate limiter useful for API/WS calls
+        // TODO: it's global now, but for perf reasons can be per connection
+        // Ref: https://docs.dydx.xyz/interaction/data/feeds#rate-limiting
         _connectionRateLimiter = new RateGate(2, TimeSpan.FromSeconds(1));
 
         var maximumWebSocketConnections = Config.GetInt("dydx-maximum-websocket-connections");
@@ -296,12 +298,12 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
     /// <param name="batched">A boolean value indicating whether to batch the subscription.</param>
     private void Subscribe(string channel, string id = null, bool batched = false)
     {
-        _connectionRateLimiter.WaitToProceed();
         SubscribeToWebSocketChannel(WebSocket, channel, id, batched);
     }
 
     private void SubscribeToWebSocketChannel(IWebSocket ws, string channel, string id = null, bool batched = false)
     {
+        _connectionRateLimiter.WaitToProceed();
         ws.Send(JsonConvert.SerializeObject(new SubscribeRequestSchema
             {
                 Channel = channel,
