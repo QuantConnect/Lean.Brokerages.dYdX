@@ -22,7 +22,7 @@ namespace QuantConnect.Brokerages.dYdX.Api;
 
 public class dYdXIndexerClient(string baseUrl)
 {
-    private readonly dYdXRestClient _restClient = new(baseUrl.TrimEnd('/'));
+    private readonly dYdXRestClient _restClient = new(baseUrl);
 
     /// <summary>
     /// Calls indexer to get perpetual positions, see https://docs.dydx.xyz/indexer-client/http#list-positions
@@ -33,7 +33,8 @@ public class dYdXIndexerClient(string baseUrl)
     public PerpetualPositionsResponse GetPerpetualPositions(Wallet wallet, string status = "OPEN")
     {
         var path =
-            $"/v4/perpetualPositions?address={Uri.EscapeDataString(wallet.Address)}&subaccountNumber={wallet.SubaccountNumber}";
+            $"perpetualPositions?address={Uri.EscapeDataString(wallet.Address)}&subaccountNumber={
+                wallet.SubaccountNumber}";
         if (!string.IsNullOrEmpty(status))
         {
             path += $"&status={Uri.EscapeDataString(status)}";
@@ -44,12 +45,12 @@ public class dYdXIndexerClient(string baseUrl)
 
     public ExchangeInfo GetExchangeInfo()
     {
-        return _restClient.Get<ExchangeInfo>("/v4/perpetualMarkets");
+        return _restClient.Get<ExchangeInfo>("perpetualMarkets");
     }
 
     public IEnumerable<OrderDto> GetOpenOrders(Wallet wallet, string status = "OPEN")
     {
-        var path = $"/v4/orders?address={wallet.Address}&subaccountNumber={wallet.SubaccountNumber}";
+        var path = $"orders?address={wallet.Address}&subaccountNumber={wallet.SubaccountNumber}";
         if (!string.IsNullOrEmpty(status))
         {
             path += $"&status={Uri.EscapeDataString(status)}";
@@ -66,6 +67,6 @@ public class dYdXIndexerClient(string baseUrl)
     public AssetPositions GetCashBalance(Wallet wallet)
     {
         return _restClient.Get<AssetPositions>(
-            $"/v4/assetPositions?address={wallet.Address}&subaccountNumber={wallet.SubaccountNumber}");
+            $"assetPositions?address={wallet.Address}&subaccountNumber={wallet.SubaccountNumber}");
     }
 }

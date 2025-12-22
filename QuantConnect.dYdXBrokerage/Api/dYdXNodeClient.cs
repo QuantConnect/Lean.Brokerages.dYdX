@@ -71,7 +71,7 @@ public class dYdXNodeClient : IDisposable
 
     public dYdXAccount GetAccount(string address)
     {
-        var accountResponse = RestClient.Get<dYdXAccountResponse>($"/cosmos/auth/v1beta1/accounts/{address}");
+        var accountResponse = RestClient.Get<dYdXAccountResponse>($"cosmos/auth/v1beta1/accounts/{address}");
         return accountResponse.Account;
     }
 

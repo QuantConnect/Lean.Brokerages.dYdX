@@ -33,12 +33,15 @@ using QuantConnect.Brokerages.dYdX.Models;
 using QuantConnect.Brokerages.dYdX.Models.WebSockets;
 using QuantConnect.Configuration;
 using QuantConnect.Data;
+using QuantConnect.Data.Market;
 using QuantConnect.Interfaces;
 using QuantConnect.Logging;
 using QuantConnect.Orders;
 using QuantConnect.Packets;
 using QuantConnect.Securities;
 using QuantConnect.Util;
+using HistoryRequest = QuantConnect.Data.HistoryRequest;
+using dYdXOpenInterest = QuantConnect.Brokerages.dYdX.Models.OpenInterest;
 
 namespace QuantConnect.Brokerages.dYdX;
 
@@ -74,6 +77,19 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
     private Domain.Market _market;
     private SymbolPropertiesDatabaseSymbolMapper _symbolMapper;
     private dYdXApiClient _apiClient;
+    private HttpClient _historyHttpClient;
+
+    private bool _unsupportedAssetHistoryLogged;
+    private bool _unsupportedResolutionHistoryLogged;
+    private bool _unsupportedTickTypeHistoryLogged;
+    private bool _invalidTimeRangeHistoryLogged;
+
+    private readonly Dictionary<Resolution, string> _knownResolutions = new()
+    {
+        { Resolution.Minute, "1MIN" },
+        { Resolution.Hour, "1HOUR" },
+        { Resolution.Daily, "1DAY" }
+    };
 
     private static readonly SymbolPropertiesDatabase SymbolPropertiesDatabase =
         SymbolPropertiesDatabase.FromDataFolder();
@@ -364,15 +380,119 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
     {
         if (!CanSubscribe(request.Symbol))
         {
-            return null; // Should consistently return null instead of an empty enumerable
+            if (!_unsupportedAssetHistoryLogged)
+            {
+                _unsupportedAssetHistoryLogged = true;
+                OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, "InvalidSymbol",
+                    $"{request.Symbol} is not supported, no history returned"));
+            }
+
+            return null;
         }
 
-        throw new NotImplementedException();
+        if (!_knownResolutions.TryGetValue(request.Resolution, out var brokerageResolution))
+        {
+            if (!_unsupportedResolutionHistoryLogged)
+            {
+                _unsupportedResolutionHistoryLogged = true;
+                OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, "InvalidResolution",
+                    $"{request.Resolution} resolution is not supported, no history returned"));
+            }
+
+            return null;
+        }
+
+        if (request.TickType is TickType.Quote)
+        {
+            if (!_unsupportedTickTypeHistoryLogged)
+            {
+                _unsupportedTickTypeHistoryLogged = true;
+                OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, "InvalidTickType",
+                    $"{request.TickType} tick type not supported, no history returned"));
+            }
+
+            return null;
+        }
+
+        if (request.StartTimeUtc >= request.EndTimeUtc)
+        {
+            if (!_invalidTimeRangeHistoryLogged)
+            {
+                _invalidTimeRangeHistoryLogged = true;
+                OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, "InvalidDateRange",
+                    "The history request start date must precede the end date, no history returned"));
+            }
+
+            return null;
+        }
+
+        _historyHttpClient ??= new HttpClient
+        {
+            BaseAddress = new Uri(Config.Get("dydx-indexer-api-rest", "https://indexer.dydx.trade/v4").TrimEnd('/') + "/")
+        };
+
+        var brokerageSymbol = _symbolMapper.GetBrokerageSymbol(request.Symbol);
+        var url = BuildCandlesUrl(brokerageSymbol, brokerageResolution, request.StartTimeUtc, request.EndTimeUtc);
+        var historyData = _historyHttpClient.DownloadData(url);
+
+        if (request.TickType is TickType.OpenInterest)
+        {
+            return GetOpenInterest(request, historyData);
+        }
+
+        return GetKlines(request, historyData);
+    }
+
+    /// <summary>
+    /// Builds the candles URL with query parameters for historical data requests
+    /// </summary>
+    private string BuildCandlesUrl(string brokerageSymbol, string resolution, DateTime startTimeUtc,
+        DateTime endTimeUtc)
+    {
+        var fromIso = startTimeUtc.ToString("yyyy-MM-ddTHH:mm:ssZ");
+        var toIso = endTimeUtc.ToString("yyyy-MM-ddTHH:mm:ssZ");
+        return
+            $"candles/perpetualMarkets/{brokerageSymbol}?resolution={resolution}&fromIso={fromIso}&toIso={toIso}";
+    }
+
+    private IEnumerable<Data.Market.OpenInterest> GetOpenInterest(HistoryRequest request, String historyData)
+    {
+        var response = JsonConvert.DeserializeObject<PerpertualMarketHistory<dYdXOpenInterest>>(historyData);
+        foreach (var oi in response.Candles)
+        {
+            yield return new Data.Market.OpenInterest(
+                Time.ParseDate(oi.StartedAt),
+                request.Symbol,
+                oi.StartingOpenInterest);
+        }
+    }
+
+    private IEnumerable<TradeBar> GetKlines(HistoryRequest request, String historyData)
+    {
+        var period = request.Resolution.ToTimeSpan();
+        var response = JsonConvert.DeserializeObject<PerpertualMarketHistory<Candle>>(historyData);
+        foreach (var kline in response.Candles)
+        {
+            yield return new TradeBar
+            {
+                Time = Time.ParseDate(kline.StartedAt),
+                Symbol = request.Symbol,
+                Low = kline.Low,
+                High = kline.High,
+                Open = kline.Open,
+                Close = kline.Close,
+                Volume = kline.BaseTokenVolume,
+                Value = kline.Close,
+                DataType = MarketDataType.TradeBar,
+                Period = period
+            };
+        }
     }
 
     public override void Dispose()
     {
         _apiClient?.DisposeSafely();
+        _historyHttpClient?.DisposeSafely();
         _connectionConfirmedEvent?.DisposeSafely();
         _connectionRateLimiter?.DisposeSafely();
         SubscriptionManager?.DisposeSafely();
@@ -534,7 +654,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
         string indexerRestUrl)
     {
         var weights = new Dictionary<Symbol, int>();
-        var data = Extensions.DownloadData($"{indexerRestUrl}/v4/perpetualMarkets");
+        var data = Extensions.DownloadData($"{indexerRestUrl}/perpetualMarkets");
         var markets = JsonConvert.DeserializeObject<ExchangeInfo>(data);
         var totalMarketVolume24H = markets.Symbols.Values
             .Select(x => x.Volume24H)

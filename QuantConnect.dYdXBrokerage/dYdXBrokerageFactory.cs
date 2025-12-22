@@ -54,7 +54,7 @@ namespace QuantConnect.Brokerages.dYdX
             // testnet
             // { "dydx-node-api-rest", Config.Get("dydx-node-api-rest", "https://test-dydx-rest.kingnodes.com") },
             // { "dydx-node-api-grpc", Config.Get("dydx-node-api-grpc", "https://test-dydx-rest.kingnodes.com:443") },
-            // { "dydx-indexer-api-rest", Config.Get("dydx-indexer-api-rest", "https://indexer.v4testnet.dydx.exchange") },
+            // { "dydx-indexer-api-rest", Config.Get("dydx-indexer-api-rest", "https://indexer.v4testnet.dydx.exchange/v4") },
             // {
             //     "dydx-indexer-api-wss",
             //     Config.Get("dydx-indexer-api-wss", "wss://indexer.v4testnet.dydx.exchange/v4/ws")
