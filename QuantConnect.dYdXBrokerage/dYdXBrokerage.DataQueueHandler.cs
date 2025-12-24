@@ -75,10 +75,5 @@ public partial class dYdXBrokerage
             orderProvider: null,
             job: job
         );
-
-        if (!IsConnected)
-        {
-            Connect();
-        }
     }
 }
