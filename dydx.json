@@ -1,6 +1,6 @@
 {
 	"name" : "dYdX",
-	"logo-url" : "https://cdn.quantconnect.com/i/tu/dydx-brokerage-logo.svg",
+	"logo-url" : "https://cdn.quantconnect.com/i/tu/dydx-module-icon.svg",
 	"min-deposit" : "None",
 	"description": "dYdX is is a decentralized derivatives trading platform built as a standalone blockchain. The integration with QuantConnect supports cryptocurrency futures trading, four orders types, and margin trading.",
 
