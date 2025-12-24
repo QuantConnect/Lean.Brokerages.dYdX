@@ -26,14 +26,15 @@ namespace QuantConnect.Brokerages.dYdX.Api;
 public class dYdXRestClient : IDisposable
 {
     private readonly HttpClient _httpClient;
-    private readonly RateGate _rateGate = new(250, TimeSpan.FromMinutes(1));
+    private readonly RateGate _rateGate;
 
-    public dYdXRestClient(string baseUrl)
+    public dYdXRestClient(string baseUrl, RateGate rateGate)
     {
         _httpClient = new HttpClient
         {
             BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/")
         };
+        _rateGate = rateGate;
     }
 
     public T Get<T>(string path)

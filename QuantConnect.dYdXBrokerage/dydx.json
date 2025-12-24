@@ -20,7 +20,8 @@
 	"module-specification": {
 		"download": {
 			"data-types": [
-				"Trade"
+				"Trade",
+				"OpenInterest"
 			],
 			"resolutions": [
 				"Minute",

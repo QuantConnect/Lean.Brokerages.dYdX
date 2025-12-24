@@ -37,16 +37,16 @@ namespace QuantConnect.Brokerages.dYdX.Api;
 
 public class dYdXNodeClient : IDisposable
 {
-    private readonly string _restUrl;
-    private readonly dYdXRestClient RestClient;
-    private readonly GrpcChannel GrpcChannel;
-    private readonly TxService.ServiceClient TxService;
-    private readonly TendermintService.ServiceClient TendermintService;
+    private readonly dYdXRestClient _restClient;
+    private readonly GrpcChannel _grpcChannel;
+    private readonly TxService.ServiceClient _txService;
+    private readonly TendermintService.ServiceClient _tendermintService;
+    private readonly RateGate _rateGate;
 
     public dYdXNodeClient(string restUrl, string grpcUrl)
     {
-        _restUrl = restUrl;
-        RestClient = new dYdXRestClient(_restUrl.TrimEnd('/'));
+        _rateGate = new RateGate(250, TimeSpan.FromMinutes(1));
+        _restClient = new dYdXRestClient(restUrl.TrimEnd('/'), _rateGate);
 
         var grpcChannelOptions = new GrpcChannelOptions
         {
@@ -59,19 +59,20 @@ public class dYdXNodeClient : IDisposable
         };
 
         var uri = new Uri(grpcUrl.TrimEnd('/'));
-        GrpcChannel =GrpcChannel.ForAddress(uri, grpcChannelOptions);
-        TxService = new TxService.ServiceClient(GrpcChannel);
-        TendermintService = new TendermintService.ServiceClient(GrpcChannel);
+        _grpcChannel = GrpcChannel.ForAddress(uri, grpcChannelOptions);
+        _txService = new TxService.ServiceClient(_grpcChannel);
+        _tendermintService = new TendermintService.ServiceClient(_grpcChannel);
     }
 
     public uint GetLatestBlockHeight()
     {
-        return checked((uint)TendermintService.GetLatestBlock(new GetLatestBlockRequest()).Block.Header.Height);
+        _rateGate.WaitToProceed();
+        return checked((uint)_tendermintService.GetLatestBlock(new GetLatestBlockRequest()).Block.Header.Height);
     }
 
     public dYdXAccount GetAccount(string address)
     {
-        var accountResponse = RestClient.Get<dYdXAccountResponse>($"cosmos/auth/v1beta1/accounts/{address}");
+        var accountResponse = _restClient.Get<dYdXAccountResponse>($"cosmos/auth/v1beta1/accounts/{address}");
         return accountResponse.Account;
     }
 
@@ -124,7 +125,8 @@ public class dYdXNodeClient : IDisposable
         byte[] signatureBytes = wallet.Sign(signdoc.ToByteArray());
         txRaw.Signatures.Add(ByteString.CopyFrom(signatureBytes));
 
-        return TxService.BroadcastTx(new BroadcastTxRequest
+        _rateGate.WaitToProceed();
+        return _txService.BroadcastTx(new BroadcastTxRequest
         {
             TxBytes = txRaw.ToByteString(),
             Mode = BroadcastMode.Sync
@@ -207,6 +209,6 @@ public class dYdXNodeClient : IDisposable
 
     public void Dispose()
     {
-        GrpcChannel.DisposeSafely();
+        _grpcChannel.DisposeSafely();
     }
 }

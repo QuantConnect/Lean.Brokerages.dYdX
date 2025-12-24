@@ -1,40 +1,38 @@
 {
-    "description": "description of brokerage",
-    "platforms-features": [
-        {
-            "Platforms": ["Cloud Platform", "Local Platform", "LEAN CLI"],
-			"Download Data": [0,0,0],
-			"Backtesting": [0,0,0],
-			"Optimization": [0,0,0],
-			"Live Trading":	[0,0,0]
-        }
-    ],
-    "order-types": ["Market", "Limit", "..."],
-	"assets": ["Equity", "Future Options", "..."], 
-	"brokerage-url": "",
-  	"documentation": "link on QuantConnect dock",
+	"name" : "dYdX",
+	"logo-url" : "https://cdn.quantconnect.com/i/tu/dydx-brokerage-logo.svg",
+	"min-deposit" : "None",
+	"description": "dYdX is is a decentralized derivatives trading platform built as a standalone blockchain. The integration with QuantConnect supports cryptocurrency futures trading, four orders types, and margin trading.",
+
+	"platforms-features": [
+		{
+			"Platforms": ["Cloud Platform", "Local Platform", "LEAN CLI"],
+			"Download Data": [1,1,1],
+			"Backtesting": [1,1,1],
+			"Optimization": [1,1,1],
+			"Live Trading":	[1,1,1]
+		}
+	],
+	"order-types": ["Market", "Limit", "Stop Market", "Stop Limit"],
+	"assets": ["Crypto Futures"],
+	"brokerage-url": "https://dydx.trade/",
+	"documentation": "/docs/v2/cloud-platform/live-trading/brokerages/dydx",
 	"module-specification": {
 		"download": {
 			"data-types": [
 				"Trade",
-				"Quote",
-                "OpenInterest"
+				"OpenInterest"
 			],
 			"resolutions": [
-                "Tick",
-				"Second",
 				"Minute",
 				"Hour",
 				"Daily"
 			],
 			"security-types": [
-				"Equity",
-				"FutureOption",
-                "..."
+				"CryptoFuture"
 			],
 			"markets": [
-				"USA",
-                "..."
+				"dYdX"
 			]
 		}
 	}

@@ -22,7 +22,7 @@ namespace QuantConnect.Brokerages.dYdX.Api;
 
 public class dYdXIndexerClient(string baseUrl)
 {
-    private readonly dYdXRestClient _restClient = new(baseUrl);
+    private readonly dYdXRestClient _restClient = new(baseUrl, new(100, TimeSpan.FromSeconds(10)));
 
     /// <summary>
     /// Calls indexer to get perpetual positions, see https://docs.dydx.xyz/indexer-client/http#list-positions

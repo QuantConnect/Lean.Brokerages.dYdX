@@ -198,6 +198,11 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
             ? FetchSymbolWeights(_symbolMapper, indexerRestUrl)
             : null;
 
+        _historyHttpClient = new HttpClient
+        {
+            BaseAddress = new Uri(indexerRestUrl.TrimEnd('/') + "/")
+        };
+
         var subscriptionManager = new BrokerageMultiWebSocketSubscriptionManager(
             indexerWssUrl,
             maxSymbolsPerWebsocketConnection,
@@ -372,11 +377,11 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
 
     /// <summary>
     /// Gets the history for the requested symbols
-    /// <see cref="IBrokerage.GetHistory(Data.HistoryRequest)"/>
+    /// <see cref="IBrokerage.GetHistory(HistoryRequest)"/>
     /// </summary>
     /// <param name="request">The historical data request</param>
     /// <returns>An enumerable of bars covering the span specified in the request</returns>
-    public override IEnumerable<BaseData> GetHistory(Data.HistoryRequest request)
+    public override IEnumerable<BaseData> GetHistory(HistoryRequest request)
     {
         if (!CanSubscribe(request.Symbol))
         {
@@ -414,7 +419,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
             return null;
         }
 
-        if (request.StartTimeUtc >= request.EndTimeUtc)
+        if (request.StartTimeUtc > request.EndTimeUtc)
         {
             if (!_invalidTimeRangeHistoryLogged)
             {
@@ -425,11 +430,6 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
 
             return null;
         }
-
-        _historyHttpClient ??= new HttpClient
-        {
-            BaseAddress = new Uri(Config.Get("dydx-indexer-api-rest", "https://indexer.dydx.trade/v4").TrimEnd('/') + "/")
-        };
 
         var brokerageSymbol = _symbolMapper.GetBrokerageSymbol(request.Symbol);
         var url = BuildCandlesUrl(brokerageSymbol, brokerageResolution, request.StartTimeUtc, request.EndTimeUtc);
@@ -455,7 +455,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
             $"candles/perpetualMarkets/{brokerageSymbol}?resolution={resolution}&fromIso={fromIso}&toIso={toIso}";
     }
 
-    private IEnumerable<Data.Market.OpenInterest> GetOpenInterest(HistoryRequest request, String historyData)
+    private IEnumerable<Data.Market.OpenInterest> GetOpenInterest(HistoryRequest request, string historyData)
     {
         var response = JsonConvert.DeserializeObject<PerpertualMarketHistory<dYdXOpenInterest>>(historyData);
         foreach (var oi in response.Candles)
@@ -467,7 +467,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
         }
     }
 
-    private IEnumerable<TradeBar> GetKlines(HistoryRequest request, String historyData)
+    private IEnumerable<TradeBar> GetKlines(HistoryRequest request, string historyData)
     {
         var period = request.Resolution.ToTimeSpan();
         var response = JsonConvert.DeserializeObject<PerpertualMarketHistory<Candle>>(historyData);
@@ -565,12 +565,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
             }
 
             // Create HTTP request
-            using var request = new HttpRequestMessage(HttpMethod.Post, "modules/license/read");
-            request.Content = new StringContent(
-                JsonConvert.SerializeObject(information),
-                Encoding.UTF8,
-                "application/json"
-            );
+            using var request = ApiUtils.CreateJsonPostRequest("modules/license/read", information);
 
             api.TryRequest(request, out ModulesReadLicenseRead result);
             if (!result.Success)
