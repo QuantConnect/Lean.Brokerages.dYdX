@@ -489,7 +489,31 @@ public partial class dYdXBrokerage
 
     private void OnBestBidAskUpdated(object sender, BestBidAskUpdatedEventArgs e)
     {
-        EmitQuoteTick(e.Symbol, e.BestBidPrice, e.BestBidSize, e.BestAskPrice, e.BestAskSize);
+        if (e.BestBidPrice < e.BestAskPrice)
+        {
+            EmitQuoteTick(e.Symbol, e.BestBidPrice, e.BestBidSize, e.BestAskPrice, e.BestAskSize);
+        }
+
+        // Orderbook got crossed, uncross it and then emit quote tick
+        if (sender is DefaultOrderBook orderBook)
+        {
+            orderBook.BestBidAskUpdated -= OnBestBidAskUpdated;
+
+            UncrossOrderBook(orderBook);
+
+            orderBook.BestBidAskUpdated += OnBestBidAskUpdated;
+            if (orderBook.BestBidPrice == 0 && orderBook.BestAskPrice == 0)
+            {
+                // nothing to emit, can happen with illiquid assets
+                return;
+            }
+
+            EmitQuoteTick(e.Symbol,
+                orderBook.BestBidPrice,
+                orderBook.BestBidSize,
+                orderBook.BestAskPrice,
+                orderBook.BestAskSize);
+        }
     }
 
     private void EmitQuoteTick(Symbol symbol, decimal bidPrice, decimal bidSize, decimal askPrice, decimal askSize)
@@ -509,6 +533,42 @@ public partial class dYdXBrokerage
         lock (_tickLocker)
         {
             _aggregator.Update(tick);
+        }
+    }
+
+    /// <summary>
+    /// Crossed prices where best bid > best ask may happen.
+    /// This happens because the dydx network is decentralized, operated by 42 validators where the order book updates can be sent by any of the validators and therefore may arrive out of sequence to the full node/indexer
+    /// see ref https://docs.dydx.xyz/interaction/data/watch-orderbook#uncrossing-the-orderbook
+    /// </summary>
+    /// <param name="orderBook">Order book to uncross</param>
+    private void UncrossOrderBook(DefaultOrderBook orderBook)
+    {
+        // Get sorted lists: bids descending (highest first), asks ascending (lowest first)
+        while (orderBook.BestBidPrice != 0
+               && orderBook.BestAskPrice != 0
+               && orderBook.BestBidPrice > orderBook.BestAskPrice)
+        {
+            var bidPrice = orderBook.BestBidPrice;
+            var bidSize = orderBook.BestBidSize;
+            var askPrice = orderBook.BestAskPrice;
+            var askSize = orderBook.BestAskSize;
+
+            if (bidSize > askSize)
+            {
+                orderBook.UpdateBidRow(bidPrice, bidSize - askSize);
+                orderBook.RemoveAskRow(askPrice);
+            }
+            else if (bidSize < askSize)
+            {
+                orderBook.UpdateAskRow(askPrice, askSize - bidSize);
+                orderBook.RemoveBidRow(bidPrice);
+            }
+            else
+            {
+                orderBook.RemoveAskRow(askPrice);
+                orderBook.RemoveBidRow(bidPrice);
+            }
         }
     }
 }
