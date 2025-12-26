@@ -17,6 +17,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json.Linq;
+using QuantConnect.Brokerages.dYdX.Extensions;
 using QuantConnect.Brokerages.dYdX.Models;
 using QuantConnect.Brokerages.dYdX.Models.WebSockets;
 using QuantConnect.Data.Market;
@@ -489,7 +490,31 @@ public partial class dYdXBrokerage
 
     private void OnBestBidAskUpdated(object sender, BestBidAskUpdatedEventArgs e)
     {
-        EmitQuoteTick(e.Symbol, e.BestBidPrice, e.BestBidSize, e.BestAskPrice, e.BestAskSize);
+        if (e.BestBidPrice < e.BestAskPrice)
+        {
+            EmitQuoteTick(e.Symbol, e.BestBidPrice, e.BestBidSize, e.BestAskPrice, e.BestAskSize);
+        }
+
+        // Orderbook got crossed, uncross it and then emit quote tick
+        if (sender is DefaultOrderBook orderBook)
+        {
+            orderBook.BestBidAskUpdated -= OnBestBidAskUpdated;
+
+            orderBook.UncrossOrderBook();
+
+            orderBook.BestBidAskUpdated += OnBestBidAskUpdated;
+            if (orderBook.BestBidPrice == 0 && orderBook.BestAskPrice == 0)
+            {
+                // nothing to emit, can happen with illiquid assets
+                return;
+            }
+
+            EmitQuoteTick(e.Symbol,
+                orderBook.BestBidPrice,
+                orderBook.BestBidSize,
+                orderBook.BestAskPrice,
+                orderBook.BestAskSize);
+        }
     }
 
     private void EmitQuoteTick(Symbol symbol, decimal bidPrice, decimal bidSize, decimal askPrice, decimal askSize)
