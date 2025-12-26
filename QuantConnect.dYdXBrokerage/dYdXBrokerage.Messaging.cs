@@ -545,13 +545,12 @@ public partial class dYdXBrokerage
     private void UncrossOrderBook(DefaultOrderBook orderBook)
     {
         // Get sorted lists: bids descending (highest first), asks ascending (lowest first)
-        while (orderBook.BestBidPrice != 0
-               && orderBook.BestAskPrice != 0
-               && orderBook.BestBidPrice > orderBook.BestAskPrice)
+        var bidPrice = orderBook.BestBidPrice;
+        var askPrice = orderBook.BestAskPrice;
+
+        while (bidPrice != 0 && askPrice != 0 && bidPrice > askPrice)
         {
-            var bidPrice = orderBook.BestBidPrice;
             var bidSize = orderBook.BestBidSize;
-            var askPrice = orderBook.BestAskPrice;
             var askSize = orderBook.BestAskSize;
 
             if (bidSize > askSize)
@@ -569,6 +568,9 @@ public partial class dYdXBrokerage
                 orderBook.RemoveAskRow(askPrice);
                 orderBook.RemoveBidRow(bidPrice);
             }
+
+            bidPrice = orderBook.BestBidPrice;
+            askPrice = orderBook.BestAskPrice;
         }
     }
 }
