@@ -649,7 +649,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
         string indexerRestUrl)
     {
         var weights = new Dictionary<Symbol, int>();
-        var data = Extensions.DownloadData($"{indexerRestUrl}/perpetualMarkets");
+        var data = QuantConnect.Extensions.DownloadData($"{indexerRestUrl}/perpetualMarkets");
         var markets = JsonConvert.DeserializeObject<ExchangeInfo>(data);
         var totalMarketVolume24H = markets.Symbols.Values
             .Select(x => x.Volume24H)
