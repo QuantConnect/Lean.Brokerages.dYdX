@@ -42,11 +42,4 @@ public class PerpetualPosition
     public decimal NetFunding { get; set; }
 
     public int SubaccountNumber { get; set; }
-
-    [JsonIgnore]
-    public decimal Quantity => Side switch
-    {
-        Enums.PositionSide.Short when Size > 0 => -Size,
-        _ => Size
-    };
 }

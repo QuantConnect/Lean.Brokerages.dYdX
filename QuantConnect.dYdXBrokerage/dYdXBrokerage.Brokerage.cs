@@ -83,7 +83,7 @@ public partial class dYdXBrokerage
                 var holding = new Holding
                 {
                     Symbol = symbol,
-                    Quantity = pos.Quantity,
+                    Quantity = pos.Size,
                     AveragePrice = pos.EntryPrice,
                     UnrealizedPnL = pos.UnrealizedPnl
                 };
