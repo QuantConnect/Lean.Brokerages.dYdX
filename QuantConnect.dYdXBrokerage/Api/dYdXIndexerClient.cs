@@ -64,9 +64,10 @@ public class dYdXIndexerClient(string baseUrl)
     /// </summary>
     /// <param name="wallet">Wallet for which to retrieve the cash balance</param>
     /// <returns>Asset positions for the specified wallet</returns>
-    public AssetPositions GetCashBalance(Wallet wallet)
+    public Subaccount GetSubaccount(Wallet wallet)
     {
-        return _restClient.Get<AssetPositions>(
-            $"assetPositions?address={wallet.Address}&subaccountNumber={wallet.SubaccountNumber}");
+        return _restClient.Get<SubaccountResponse>(
+                $"addresses/{wallet.Address}/subaccountNumber/{wallet.SubaccountNumber}")
+            .Subaccount;
     }
 }

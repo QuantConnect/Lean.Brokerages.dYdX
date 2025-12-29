@@ -107,12 +107,34 @@ public partial class dYdXBrokerage
     /// <returns>The current cash balance for each currency available for trading</returns>
     public override List<CashAmount> GetCashBalance()
     {
-        var balances = _apiClient.Indexer.GetCashBalance(Wallet);
-        return balances
-            .Positions
-            .Where(b => b.Side == Models.Enums.PositionSide.Long)
-            .Select(b => new CashAmount(b.Size, b.Symbol.LazyToUpper()))
-            .ToList();
+        if (_algorithm == null)
+        {
+            return [];
+        }
+
+        var balances = _apiClient.Indexer.GetSubaccount(Wallet);
+        var accountCurrency = _algorithm.Portfolio.CashBook.AccountCurrency;
+        var cashBalances = new List<CashAmount>();
+
+        foreach (var (currency, asset) in balances.AssetPositions)
+        {
+            if (currency == accountCurrency)
+            {
+                // For account currency, include perpetual positions in the calculation
+                var cashBalance = new CashAmount(
+                    asset.Size + balances.OpenPerpetualPositions.Values.Sum(p => p.Size * p.EntryPrice),
+                    asset.Symbol.LazyToUpper()
+                );
+                cashBalances.Add(cashBalance);
+            }
+            else
+            {
+                // For other currencies, just return the size
+                cashBalances.Add(new CashAmount(asset.Size, asset.Symbol.LazyToUpper()));
+            }
+        }
+
+        return cashBalances;
     }
 
     /// <summary>
