@@ -14,7 +14,6 @@
  */
 
 using System.Collections.Generic;
-using Moq;
 using NUnit.Framework;
 using QuantConnect.Brokerages.dYdX.Extensions;
 using QuantConnect.Brokerages.dYdX.Models;
@@ -41,7 +40,8 @@ public class SubaccountExtensionsTests
         {
             AssetPositions = new Dictionary<string, AssetPosition>
             {
-                { "USDC", new AssetPosition { Size = 100m, Symbol = "USDC" } }
+                { "USDC", new AssetPosition { Size = 100m, Symbol = "USDC" } },
+                { "DYDX", new AssetPosition { Size = 10_000m, Symbol = "DYDX" } },
             },
             OpenPerpetualPositions = new Dictionary<string, PerpetualPosition>()
         };
@@ -50,9 +50,9 @@ public class SubaccountExtensionsTests
         var cashAmounts = subaccount.GetCashAmounts(_symbolPropertiesDatabase, AccountType.Margin);
 
         // Assert
-        Assert.AreEqual(1, cashAmounts.Count);
-        Assert.AreEqual(100m, cashAmounts[0].Amount);
-        Assert.AreEqual("USDC", cashAmounts[0].Currency);
+        Assert.AreEqual(2, cashAmounts.Count);
+        AssertTokenValue(cashAmounts, "USDC", 100m);
+        AssertTokenValue(cashAmounts, "DYDX", 10_000m);
     }
 
     [Test]
@@ -85,13 +85,8 @@ public class SubaccountExtensionsTests
         // Assert
         Assert.AreEqual(2, cashAmounts.Count);
 
-        var usdcAmount = cashAmounts.Find(c => c.Currency == "USDC");
-        Assert.IsNotNull(usdcAmount);
-        Assert.AreEqual(100m, usdcAmount.Amount);
-
-        var usdAmount = cashAmounts.Find(c => c.Currency == "USD");
-        Assert.IsNotNull(usdAmount);
-        Assert.AreEqual(4000m, usdAmount.Amount);
+        AssertTokenValue(cashAmounts, "USDC", 100m);
+        AssertTokenValue(cashAmounts, "USD", 4000m);
     }
 
     [Test]
@@ -132,15 +127,11 @@ public class SubaccountExtensionsTests
 
         // Assert
         Assert.AreEqual(2, cashAmounts.Count);
-        var usdcAmount = cashAmounts.Find(c => c.Currency == "USDC");
-        Assert.IsNotNull(usdcAmount);
         // 100 (asset)
-        Assert.AreEqual(100m, usdcAmount.Amount);
+        AssertTokenValue(cashAmounts, "USDC", 100m);
 
-        var usdAmount = cashAmounts.Find(c => c.Currency == "USD");
-        Assert.IsNotNull(usdAmount);
         // 2 * 2000 (ETH) + 0.5 * 40000 (BTC) = 4000 + 20000 = 24000
-        Assert.AreEqual(24000m, usdAmount.Amount);
+        AssertTokenValue(cashAmounts, "USD", 24000m);
     }
 
     [Test]
@@ -171,8 +162,13 @@ public class SubaccountExtensionsTests
         var cashAmounts = subaccount.GetCashAmounts(_symbolPropertiesDatabase, AccountType.Cash);
 
         // Assert
-        Assert.AreEqual(1, cashAmounts.Count);
-        Assert.AreEqual(100m, cashAmounts[0].Amount);
-        Assert.AreEqual("USDC", cashAmounts[0].Currency);
+        AssertTokenValue(cashAmounts, "USDC", 100m);
+    }
+
+    private static void AssertTokenValue(List<CashAmount> cashAmounts, string currency, decimal expectedValue = 0)
+    {
+        var amount = cashAmounts.Find(c => c.Currency == currency);
+        Assert.IsNotNull(amount);
+        Assert.AreEqual(expectedValue, amount.Amount);
     }
 }
