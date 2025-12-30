@@ -55,7 +55,7 @@ public static class SubaccountExtensions
             {
                 foreach (var (instrument, positions) in source.OpenPerpetualPositions)
                 {
-                    var symbol = Symbol.Create(instrument, SecurityType.Future, Market.dYdX);
+                    var symbol = Symbol.Create(instrument, SecurityType.CryptoFuture, Market.dYdX);
                     var symbolProperties = symbolPropertiesDatabase.GetSymbolProperties(
                         symbol.ID.Market,
                         symbol,
