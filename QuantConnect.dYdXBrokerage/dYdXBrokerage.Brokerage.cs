@@ -113,8 +113,8 @@ public partial class dYdXBrokerage
             return [];
         }
 
-        var balances = _apiClient.Indexer.GetSubaccount(Wallet);
-        return balances.GetCashAmounts(SymbolPropertiesDatabase, _algorithm.BrokerageModel.AccountType);
+        var subaccount = _apiClient.Indexer.GetSubaccount(Wallet);
+        return subaccount.GetCashAmounts(SymbolPropertiesDatabase, _algorithm.BrokerageModel.AccountType);
     }
 
     /// <summary>
