@@ -100,6 +100,8 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
 
     private Wallet Wallet { get; set; }
 
+    public override string AccountBaseCurrency { get; protected set; } = "USDC";
+
     /// <summary>
     /// Parameterless constructor for brokerage
     /// </summary>
