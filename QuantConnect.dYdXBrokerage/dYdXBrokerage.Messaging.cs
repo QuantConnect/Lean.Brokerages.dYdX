@@ -245,11 +245,10 @@ public partial class dYdXBrokerage
         var symbol = _symbolMapper.GetLeanSymbol(trades.Id, SecurityType.CryptoFuture, MarketName);
         foreach (var trade in trades.Contents.Trades)
         {
-            // var tradeValue = trade.Side == OrderSide.Buy ? trade.Value : trade.Value * -1;
             EmitTradeTick(symbol,
                 Time.ParseDate(trade.CreatedAt),
                 trade.Price,
-                trade.Quantity);
+                trade.Size);
         }
     }
 

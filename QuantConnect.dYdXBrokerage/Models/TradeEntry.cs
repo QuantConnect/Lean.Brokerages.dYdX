@@ -24,5 +24,4 @@ public class TradeEntry
     public OrderDirection Side { get; set; }
     public decimal Price { get; set; }
     public string CreatedAt { get; set; }
-    public decimal Quantity => Side == OrderDirection.Buy ? Size : -Size;
 }
