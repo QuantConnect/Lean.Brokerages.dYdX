@@ -86,7 +86,7 @@ public class dYdXNodeClient : IDisposable
             throw new InvalidOperationException("No authenticators found for the provided address");
         }
 
-        return response.AccountAuthenticators.First().Id;
+        return response.AccountAuthenticators.Last().Id;
     }
 
     public dYdXPlaceOrderResponse PlaceOrder(Wallet wallet, Order order, ulong gasLimit)
