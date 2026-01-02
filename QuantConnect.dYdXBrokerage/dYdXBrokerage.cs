@@ -454,28 +454,28 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
         var fromIso = startTimeUtc.ToString("yyyy-MM-ddTHH:mm:ssZ");
         var toIso = endTimeUtc.ToString("yyyy-MM-ddTHH:mm:ssZ");
         return
-            $"candles/perpetualMarkets/{brokerageSymbol}?resolution={resolution}&fromIso={fromIso}&toIso={toIso}";
+            $"candles/perpetualMarkets/{brokerageSymbol}?resolution={resolution}&fromISO={fromIso}&toISO={toIso}";
     }
 
     private IEnumerable<Data.Market.OpenInterest> GetOpenInterest(HistoryRequest request, string historyData)
     {
         var response = JsonConvert.DeserializeObject<PerpertualMarketHistory<dYdXOpenInterest>>(historyData);
-        foreach (var oi in response.Candles)
-        {
-            yield return new Data.Market.OpenInterest(
+        // Emit bars from oldest to newest, as they happened, but dydx returns bars from newest to oldest
+        return response.Candles
+            .Select(oi => new Data.Market.OpenInterest(
                 Time.ParseDate(oi.StartedAt),
                 request.Symbol,
-                oi.StartingOpenInterest);
-        }
+                oi.StartingOpenInterest))
+            .OrderBy(oi => oi.Time);
     }
 
     private IEnumerable<TradeBar> GetKlines(HistoryRequest request, string historyData)
     {
         var period = request.Resolution.ToTimeSpan();
         var response = JsonConvert.DeserializeObject<PerpertualMarketHistory<Candle>>(historyData);
-        foreach (var kline in response.Candles)
-        {
-            yield return new TradeBar
+        // Emit bars from oldest to newest, as they happened, but dydx returns bars from newest to oldest
+        return response.Candles
+            .Select(kline => new TradeBar
             {
                 Time = Time.ParseDate(kline.StartedAt),
                 Symbol = request.Symbol,
@@ -487,8 +487,8 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
                 Value = kline.Close,
                 DataType = MarketDataType.TradeBar,
                 Period = period
-            };
-        }
+            })
+            .OrderBy(oi => oi.Time);
     }
 
     public override void Dispose()
