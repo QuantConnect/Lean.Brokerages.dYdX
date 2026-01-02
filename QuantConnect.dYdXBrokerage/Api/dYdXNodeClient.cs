@@ -14,20 +14,20 @@
  */
 
 using System;
+using System.Linq;
 using System.Net.Http;
 using Cosmos.Crypto.Secp256K1;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Net.Client;
-using Newtonsoft.Json;
 using QuantConnect.Brokerages.dYdX.Domain;
 using QuantConnect.Brokerages.dYdX.Domain.Enums;
 using QuantConnect.Brokerages.dYdX.Models;
 using QuantConnect.dYdXBrokerage.Cosmos.Base.Tendermint.V1Beta1;
 using QuantConnect.dYdXBrokerage.Cosmos.Tx;
 using QuantConnect.dYdXBrokerage.Cosmos.Tx.Signing;
+using QuantConnect.dYdXBrokerage.dYdXProtocol.AccountPlus;
 using QuantConnect.dYdXBrokerage.dYdXProtocol.Clob;
-using QuantConnect.Logging;
 using QuantConnect.Util;
 using Order = QuantConnect.dYdXBrokerage.dYdXProtocol.Clob.Order;
 using TendermintService = QuantConnect.dYdXBrokerage.Cosmos.Base.Tendermint.V1Beta1.Service;
@@ -41,6 +41,7 @@ public class dYdXNodeClient : IDisposable
     private readonly GrpcChannel _grpcChannel;
     private readonly TxService.ServiceClient _txService;
     private readonly TendermintService.ServiceClient _tendermintService;
+    private readonly Query.QueryClient _accountPlusService;
     private readonly RateGate _rateGate;
 
     public dYdXNodeClient(string restUrl, string grpcUrl)
@@ -62,6 +63,7 @@ public class dYdXNodeClient : IDisposable
         _grpcChannel = GrpcChannel.ForAddress(uri, grpcChannelOptions);
         _txService = new TxService.ServiceClient(_grpcChannel);
         _tendermintService = new TendermintService.ServiceClient(_grpcChannel);
+        _accountPlusService = new Query.QueryClient(_grpcChannel);
     }
 
     public uint GetLatestBlockHeight()
@@ -76,9 +78,22 @@ public class dYdXNodeClient : IDisposable
         return accountResponse.Account;
     }
 
+    public ulong GetAuthenticatorId(string address)
+    {
+        var response = _accountPlusService.GetAuthenticators(new GetAuthenticatorsRequest { Account = address });
+        if (response.AccountAuthenticators.IsNullOrEmpty())
+        {
+            throw new InvalidOperationException("No authenticators found for the provided address");
+        }
+
+        return response.AccountAuthenticators.First().Id;
+    }
+
     public dYdXPlaceOrderResponse PlaceOrder(Wallet wallet, Order order, ulong gasLimit)
     {
-        var txBody = BuildPlaceOrderBodyTxBody(order);
+        var txBody = CreateTxBody(wallet);
+
+        AddPlaceOrderMessage(txBody, order);
         var response = BroadcastTransaction(wallet, txBody, gasLimit);
 
         return new dYdXPlaceOrderResponse
@@ -92,7 +107,9 @@ public class dYdXNodeClient : IDisposable
 
     public dYdXCancelOrderResponse CancelOrder(Wallet wallet, Order order, ulong gasLimit)
     {
-        var txBody = BuildCancelOrderTxBody(order);
+        var txBody = CreateTxBody(wallet);
+
+        AdddCancelOrderMessage(txBody, order);
         var response = BroadcastTransaction(wallet, txBody, gasLimit);
 
         return new dYdXCancelOrderResponse
@@ -133,19 +150,27 @@ public class dYdXNodeClient : IDisposable
         });
     }
 
-    private TxBody BuildPlaceOrderBodyTxBody(Order orderProto)
+    private static TxBody CreateTxBody(Wallet wallet)
     {
         var txBody = new TxBody();
-        var msgPlaceOrder = new MsgPlaceOrder { Order = orderProto };
-        var msg = new Any { TypeUrl = "/dydxprotocol.clob.MsgPlaceOrder", Value = msgPlaceOrder.ToByteString() };
-        txBody.Messages.Add(msg);
+        var txExtensions = new TxExtension();
+        txExtensions.SelectedAuthenticators.Add(wallet.AuthenticatorId);
+
+        txBody.NonCriticalExtensionOptions.Add(
+            new Any { TypeUrl = "/dydxprotocol.accountplus.TxExtension", Value = txExtensions.ToByteString() });
         return txBody;
     }
 
-    private TxBody BuildCancelOrderTxBody(Order order)
+    private void AddPlaceOrderMessage(TxBody txBody, Order orderProto)
+    {
+        var msgPlaceOrder = new MsgPlaceOrder { Order = orderProto };
+        var msg = new Any { TypeUrl = "/dydxprotocol.clob.MsgPlaceOrder", Value = msgPlaceOrder.ToByteString() };
+        txBody.Messages.Add(msg);
+    }
+
+    private void AdddCancelOrderMessage(TxBody txBody, Order order)
     {
         var orderId = order.OrderId;
-        var txBody = new TxBody();
         var msgCancelOrder = new MsgCancelOrder
         {
             OrderId = orderId
@@ -166,7 +191,6 @@ public class dYdXNodeClient : IDisposable
 
         var msg = new Any { TypeUrl = "/dydxprotocol.clob.MsgCancelOrder", Value = msgCancelOrder.ToByteString() };
         txBody.Messages.Add(msg);
-        return txBody;
     }
 
     private AuthInfo BuildAuthInfo(Wallet wallet, ulong gasLimit)

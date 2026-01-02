@@ -30,7 +30,7 @@ namespace QuantConnect.Brokerages.dYdX.Domain;
 public class Wallet
 {
     /// <summary>
-    /// Gets or sets the private key for the wallet
+    /// The hexadecimal private key string of the authenticator (not the address itself)
     /// </summary>
     private string PrivateKey { get; }
 
@@ -39,6 +39,7 @@ public class Wallet
     public string Address { get; }
     public ulong AccountNumber { get; }
     public uint SubaccountNumber { get; }
+    public ulong AuthenticatorId { get; }
     public ulong Sequence { get; }
     public string ChainId { get; }
 
@@ -53,6 +54,7 @@ public class Wallet
     /// <param name="subaccountNumber">The subaccount number for the wallet</param>
     /// <param name="sequence">The sequence number for the wallet</param>
     /// <param name="chainId">The chain ID for the wallet</param>
+    /// <param name="authenticatorId">The authenticator ID for the wallet</param>
     private Wallet(string privateKey,
         string publicKey,
         string publicKeyType,
@@ -60,7 +62,8 @@ public class Wallet
         ulong accountNumber,
         uint subaccountNumber,
         ulong sequence,
-        string chainId)
+        string chainId,
+        ulong authenticatorId)
     {
         PrivateKey = privateKey;
         PublicKey = publicKey;
@@ -70,13 +73,14 @@ public class Wallet
         SubaccountNumber = subaccountNumber;
         Sequence = sequence;
         ChainId = chainId;
+        AuthenticatorId = authenticatorId;
     }
 
     /// <summary>
     /// Creates a wallet from an existing private key
     /// </summary>
     /// <param name="apiClient">The dYdX API client</param>
-    /// <param name="privateKeyHex">The hexadecimal private key string</param>
+    /// <param name="privateKeyHex">The hexadecimal private key string of the authenticator (not the address itself)</param>
     /// <param name="address">The address associated with the mnemonic</param>
     /// <param name="chainId">Chain ID for the wallet</param>
     /// <param name="subaccountNumber">The subaccount number to use for this wallet</param>
@@ -163,9 +167,19 @@ public class Wallet
                 throw new ArgumentException("Private key cannot be null or empty", nameof(privateKeyHex));
             }
 
-            _privateKeyHex = privateKeyHex;
+            _privateKeyHex = StripHexPrefix(privateKeyHex);
             _mnemonic = null; // clear conflicting state
             return this;
+        }
+
+        private string StripHexPrefix(string privateKeyHex)
+        {
+            if (privateKeyHex.StartsWith("0x"))
+            {
+                return privateKeyHex.Substring(2);
+            }
+
+            return privateKeyHex;
         }
 
         public Builder WithAddress(string address)
@@ -228,6 +242,7 @@ public class Wallet
             }
 
             var account = _apiClient.Node.GetAccount(_address);
+            var authenticatorId = _apiClient.Node.GetAuthenticatorId(_address);
 
             return new Wallet(
                 privateKeyHex,
@@ -237,7 +252,8 @@ public class Wallet
                 account.AccountNumber,
                 _subaccountNumber,
                 account.Sequence,
-                _chainId
+                _chainId,
+                authenticatorId
             );
         }
 
