@@ -257,7 +257,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
     {
         if (!string.IsNullOrEmpty(privateKeyHex))
         {
-            return Wallet.FromPrivateKey(apiClient, privateKeyHex, address, chainId, subaccountNumber);
+            return Wallet.FromAuthenticator(apiClient, privateKeyHex, address, chainId, subaccountNumber);
         }
 
         return null;

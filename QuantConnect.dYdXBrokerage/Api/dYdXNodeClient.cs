@@ -14,6 +14,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using Cosmos.Crypto.Secp256K1;
@@ -37,6 +38,8 @@ namespace QuantConnect.Brokerages.dYdX.Api;
 
 public class dYdXNodeClient : IDisposable
 {
+    private const int ErrorCodeUnauthorized = 104;
+
     private readonly dYdXRestClient _restClient;
     private readonly GrpcChannel _grpcChannel;
     private readonly TxService.ServiceClient _txService;
@@ -78,7 +81,7 @@ public class dYdXNodeClient : IDisposable
         return accountResponse.Account;
     }
 
-    public ulong GetAuthenticatorId(string address)
+    public List<ulong> GetAuthenticators(string address)
     {
         var response = _accountPlusService.GetAuthenticators(new GetAuthenticatorsRequest { Account = address });
         if (response.AccountAuthenticators.IsNullOrEmpty())
@@ -86,16 +89,12 @@ public class dYdXNodeClient : IDisposable
             throw new InvalidOperationException("No authenticators found for the provided address");
         }
 
-        return response.AccountAuthenticators.Last().Id;
+        return response.AccountAuthenticators.Select(authenticator => authenticator.Id).ToList();
     }
 
     public dYdXPlaceOrderResponse PlaceOrder(Wallet wallet, Order order, ulong gasLimit)
     {
-        var txBody = CreateTxBody(wallet);
-
-        AddPlaceOrderMessage(txBody, order);
-        var response = BroadcastTransaction(wallet, txBody, gasLimit);
-
+        var response = ExecuteTransaction(wallet, gasLimit, (txBody) => AddPlaceOrderMessage(txBody, order));
         return new dYdXPlaceOrderResponse
         {
             Code = response.TxResponse.Code,
@@ -107,11 +106,7 @@ public class dYdXNodeClient : IDisposable
 
     public dYdXCancelOrderResponse CancelOrder(Wallet wallet, Order order, ulong gasLimit)
     {
-        var txBody = CreateTxBody(wallet);
-
-        AdddCancelOrderMessage(txBody, order);
-        var response = BroadcastTransaction(wallet, txBody, gasLimit);
-
+        var response = ExecuteTransaction(wallet, gasLimit, (txBody) => AdddCancelOrderMessage(txBody, order));
         return new dYdXCancelOrderResponse
         {
             Code = response.TxResponse.Code,
@@ -119,6 +114,35 @@ public class dYdXNodeClient : IDisposable
             TxHash = response.TxResponse.Txhash,
             Message = response.TxResponse.RawLog
         };
+    }
+
+    private BroadcastTxResponse ExecuteTransaction(Wallet wallet, ulong gasLimit, Action<TxBody> bodyBuilder)
+    {
+        while (true)
+        {
+            // Explicitly use the Authenticator-based authentication method.
+            // This ensures we rely on the authenticator ID rather than falling back
+            // to wallet private keys or mnemonic phrases for transaction signing.
+            if (!wallet.TryGetAuthenticatorId(out var authenticatorId))
+            {
+                throw new InvalidOperationException("No authenticators found for the provided address");
+            }
+
+            var txBody = CreateTxBody(authenticatorId);
+
+            bodyBuilder(txBody);
+            var response = BroadcastTransaction(wallet, txBody, gasLimit);
+            if (response.TxResponse.Code != ErrorCodeUnauthorized)
+            {
+                if (response.TxResponse.Code == 0)
+                {
+                    // Cache the successful authenticator ID to avoid unnecessary retries on subsequent transactions
+                    wallet.AuthenticatorId = authenticatorId;
+                }
+
+                return response;
+            }
+        }
     }
 
     private BroadcastTxResponse BroadcastTransaction(Wallet wallet, TxBody txBody, ulong gasLimit)
@@ -150,14 +174,16 @@ public class dYdXNodeClient : IDisposable
         });
     }
 
-    private static TxBody CreateTxBody(Wallet wallet)
+    private static TxBody CreateTxBody(ulong authenticatorId)
     {
         var txBody = new TxBody();
+
         var txExtensions = new TxExtension();
-        txExtensions.SelectedAuthenticators.Add(wallet.AuthenticatorId);
+        txExtensions.SelectedAuthenticators.Add(authenticatorId);
 
         txBody.NonCriticalExtensionOptions.Add(
             new Any { TypeUrl = "/dydxprotocol.accountplus.TxExtension", Value = txExtensions.ToByteString() });
+
         return txBody;
     }
 

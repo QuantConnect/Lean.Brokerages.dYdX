@@ -15,12 +15,14 @@
 
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Org.BouncyCastle.Asn1.Sec;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Crypto.Signers;
 using Org.BouncyCastle.Math;
 using QuantConnect.Brokerages.dYdX.Api;
+using QuantConnect.Util;
 
 namespace QuantConnect.Brokerages.dYdX.Domain;
 
@@ -29,6 +31,8 @@ namespace QuantConnect.Brokerages.dYdX.Domain;
 /// </summary>
 public class Wallet
 {
+    private Queue<ulong> _authenticators;
+
     /// <summary>
     /// The hexadecimal private key string of the authenticator (not the address itself)
     /// </summary>
@@ -39,9 +43,9 @@ public class Wallet
     public string Address { get; }
     public ulong AccountNumber { get; }
     public uint SubaccountNumber { get; }
-    public ulong AuthenticatorId { get; }
     public ulong Sequence { get; }
     public string ChainId { get; }
+    public ulong? AuthenticatorId { get; set; }
 
     /// <summary>
     /// Initializes a new instance of the Wallet class
@@ -55,6 +59,7 @@ public class Wallet
     /// <param name="sequence">The sequence number for the wallet</param>
     /// <param name="chainId">The chain ID for the wallet</param>
     /// <param name="authenticatorId">The authenticator ID for the wallet</param>
+    /// <param name="authenticators">The authenticators for the wallet</param>
     private Wallet(string privateKey,
         string publicKey,
         string publicKeyType,
@@ -63,7 +68,8 @@ public class Wallet
         uint subaccountNumber,
         ulong sequence,
         string chainId,
-        ulong authenticatorId)
+        ulong? authenticatorId = null,
+        List<ulong> authenticators = null)
     {
         PrivateKey = privateKey;
         PublicKey = publicKey;
@@ -74,10 +80,14 @@ public class Wallet
         Sequence = sequence;
         ChainId = chainId;
         AuthenticatorId = authenticatorId;
+        if (authenticators != null)
+        {
+            _authenticators = new Queue<ulong>(authenticators);
+        }
     }
 
     /// <summary>
-    /// Creates a wallet from an existing private key
+    /// Creates a wallet with Authenticator-base authentication
     /// </summary>
     /// <param name="apiClient">The dYdX API client</param>
     /// <param name="privateKeyHex">The hexadecimal private key string of the authenticator (not the address itself)</param>
@@ -86,24 +96,18 @@ public class Wallet
     /// <param name="subaccountNumber">The subaccount number to use for this wallet</param>
     /// <returns>A new Wallet instance initialized with the provided private key</returns>
     /// <exception cref="ArgumentException">Thrown when privateKey is null, empty, or whitespace</exception>
-    public static Wallet FromPrivateKey(dYdXApiClient apiClient,
+    public static Wallet FromAuthenticator(dYdXApiClient apiClient,
         string privateKeyHex,
         string address,
         string chainId,
-        uint subaccountNumber)
+        uint subaccountNumber
+    )
         => Builder
-            .Create(apiClient)
-            .FromPrivateKey(privateKeyHex)
-            .WithAddress(address)
+            .Create(address, apiClient)
+            .WithAuthenticator(privateKeyHex)
             .WithChainId(chainId)
             .WithSubaccount(subaccountNumber)
             .Build();
-
-    private static string PrivateKeyHexFromMnemonic(string mnemonicPhrase)
-    {
-        // TODO: Implement BIP39 mnemonic to private key derivation
-        throw new NotImplementedException();
-    }
 
     public byte[] Sign(byte[] signDocBytes)
     {
@@ -140,8 +144,28 @@ public class Wallet
         return rPadded.Concat(sPadded).ToArray(); // 64 bytes r||s
     }
 
+    public bool TryGetAuthenticatorId(out ulong authenticatorId)
+    {
+        if (AuthenticatorId.HasValue)
+        {
+            authenticatorId = AuthenticatorId.Value;
+            return true;
+        }
+
+        if (!_authenticators.IsNullOrEmpty())
+        {
+            authenticatorId = _authenticators.Dequeue();
+            return true;
+        }
+
+        authenticatorId = 0;
+        return false;
+    }
+
     public class Builder
     {
+        private const int MaxAuthenticatorsQueueSize = 1000;
+
         private readonly dYdXApiClient _apiClient;
 
         private string _privateKeyHex;
@@ -151,16 +175,24 @@ public class Wallet
         private string _address;
         private string _chainId;
         private uint _subaccountNumber;
+        private ulong? _authenticatorId;
+        private string _authenticatorPrivateKey;
 
-        private Builder(dYdXApiClient apiClient)
+        private Builder(string address, dYdXApiClient apiClient)
         {
+            if (string.IsNullOrWhiteSpace(address))
+            {
+                throw new ArgumentException("Address cannot be null or empty", nameof(address));
+            }
+
+            _address = address;
             _apiClient = apiClient ?? throw new ArgumentNullException(nameof(apiClient));
         }
 
-        public static Builder Create(dYdXApiClient apiClient)
-            => new(apiClient);
+        public static Builder Create(string address, dYdXApiClient apiClient)
+            => new(address, apiClient);
 
-        public Builder FromPrivateKey(string privateKeyHex)
+        public Builder WithPrivateKey(string privateKeyHex)
         {
             if (string.IsNullOrWhiteSpace(privateKeyHex))
             {
@@ -168,8 +200,38 @@ public class Wallet
             }
 
             _privateKeyHex = StripHexPrefix(privateKeyHex);
-            _mnemonic = null; // clear conflicting state
+
+            // clear conflicting state
+            _authenticatorId = null;
+            _authenticatorPrivateKey = null;
+            _mnemonic = null;
             return this;
+        }
+
+        public Builder WithMnemonic(string mnemonicPhrase)
+        {
+            throw new NotImplementedException("Mnemonic phrase not yet supported");
+        }
+
+        public Builder WithAuthenticator(ulong? id, string privateKeyHex)
+        {
+            if (string.IsNullOrWhiteSpace(privateKeyHex))
+            {
+                throw new ArgumentException("Private key cannot be null or empty", nameof(privateKeyHex));
+            }
+
+            _authenticatorId = id;
+            _authenticatorPrivateKey = StripHexPrefix(privateKeyHex);
+
+            // clear conflicting state
+            _privateKeyHex = null;
+            _mnemonic = null;
+            return this;
+        }
+
+        public Builder WithAuthenticator(string privateKeyHex)
+        {
+            return WithAuthenticator(null, privateKeyHex);
         }
 
         private string StripHexPrefix(string privateKeyHex)
@@ -180,17 +242,6 @@ public class Wallet
             }
 
             return privateKeyHex;
-        }
-
-        public Builder WithAddress(string address)
-        {
-            if (string.IsNullOrWhiteSpace(address))
-            {
-                throw new ArgumentException("Address cannot be null or empty", nameof(address));
-            }
-
-            _address = address;
-            return this;
         }
 
         public Builder WithSubaccount(uint subaccountNumber)
@@ -236,13 +287,30 @@ public class Wallet
                 privateKeyHex = PrivateKeyHexFromMnemonic(_mnemonic);
             }
 
+            List<ulong> authenticators = null;
+            if (privateKeyHex == null && _authenticatorPrivateKey != null)
+            {
+                authenticators = _authenticatorId.HasValue
+                    ? [_authenticatorId.Value]
+                    : _apiClient.Node.GetAuthenticators(_address);
+                if (authenticators.Count == 0 || authenticators.Count > MaxAuthenticatorsQueueSize)
+                {
+                    throw new InvalidOperationException("No authenticators found for address");
+                }
+
+                privateKeyHex = _authenticatorPrivateKey;
+                if (authenticators.Count == 1)
+                {
+                    _authenticatorId = authenticators.First();
+                }
+            }
+
             if (string.IsNullOrWhiteSpace(privateKeyHex))
             {
                 throw new InvalidOperationException("Private key or mnemonic must be provided");
             }
 
             var account = _apiClient.Node.GetAccount(_address);
-            var authenticatorId = _apiClient.Node.GetAuthenticatorId(_address);
 
             return new Wallet(
                 privateKeyHex,
@@ -253,7 +321,8 @@ public class Wallet
                 _subaccountNumber,
                 account.Sequence,
                 _chainId,
-                authenticatorId
+                _authenticatorId,
+                authenticators
             );
         }
 
