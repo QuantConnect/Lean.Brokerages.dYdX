@@ -154,12 +154,20 @@ public class Wallet
 
         if (!_authenticators.IsNullOrEmpty())
         {
-            authenticatorId = _authenticators.Dequeue();
+            authenticatorId = _authenticators.Peek();
             return true;
         }
 
         authenticatorId = 0;
         return false;
+    }
+
+    public void DequeueAuthenticatorId()
+    {
+        if (_authenticators.Count > 0)
+        {
+            _authenticators.Dequeue();
+        }
     }
 
     public class Builder

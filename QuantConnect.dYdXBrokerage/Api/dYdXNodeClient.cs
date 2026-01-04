@@ -142,6 +142,7 @@ public class dYdXNodeClient : IDisposable
 
                 return response;
             }
+            wallet.DequeueAuthenticatorId();
         }
     }
 
