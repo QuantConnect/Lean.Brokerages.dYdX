@@ -64,6 +64,11 @@
     <Protobuf Include="Protos\dydxprotocol\subaccounts\asset_position.proto" GrpcServices="Client" ProtoRoot="Protos\" />
     <Protobuf Include="Protos\dydxprotocol\subaccounts\perpetual_position.proto" GrpcServices="Client" ProtoRoot="Protos\" />
     <Protobuf Include="Protos\dydxprotocol\subaccounts\subaccount.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\dydxprotocol\accountplus\accountplus.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\dydxprotocol\accountplus\models.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\dydxprotocol\accountplus\params.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\dydxprotocol\accountplus\query.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\dydxprotocol\accountplus\tx.proto" GrpcServices="Client" ProtoRoot="Protos\" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
