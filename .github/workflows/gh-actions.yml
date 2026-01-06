@@ -7,6 +7,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    env:
+      QC_DYDX_ADDRESS: ${{ secrets.QC_DYDX_ADDRESS }}
+      QC_DYDX_PRIVATE_KEY: ${{ secrets.QC_DYDX_PRIVATE_KEY }}
+      QC_DYDX_SUBACCOUNT_NUMBER: ${{ secrets.QC_DYDX_SUBACCOUNT_NUMBER }}
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -41,10 +45,10 @@ jobs:
       - uses: addnab/docker-run-action@v3
         with:
           image: quantconnect/lean:foundation
-          options: --workdir /__w/Lean.Brokerages.Template/Lean.Brokerages.Template -v /home/runner/work:/__w -e QC_TEMPLATE_BROKERAGE_KEY=${{ secrets.QC_TEMPLATE_BROKERAGE_KEY }} -e QC_TEMPLATE_BROKERAGE_SECRET=${{ secrets.QC_TEMPLATE_BROKERAGE_SECRET }} -e QC_JOB_USER_ID=${{ secrets.QC_JOB_USER_ID }} -e QC_API_ACCESS_TOKEN=${{ secrets.QC_API_ACCESS_TOKEN }} -e QC_JOB_ORGANIZATION_ID=${{ secrets.QC_JOB_ORGANIZATION_ID }}
+          options: --workdir /__w/Lean.Brokerages.dYdX/Lean.Brokerages.dYdX -v /home/runner/work:/__w -e QC_DYDX_ADDRESS -e QC_DYDX_PRIVATE_KEY -e QC_DYDX_SUBACCOUNT_NUMBER
           shell: bash
           run: |
             # Build
-            dotnet build /p:Configuration=Release /v:quiet /p:WarningLevel=1 QuantConnect.TemplateBrokerage.sln && \
+            dotnet build /p:Configuration=Release /v:quiet /p:WarningLevel=1 QuantConnect.dYdXBrokerage.sln && \
             # Run Tests
-            dotnet test ./QuantConnect.TemplateBrokerage.Tests/bin/Release/QuantConnect.Brokerages.Template.Tests.dll
+            dotnet test ./QuantConnect.dYdXBrokerage.Tests/bin/Release/QuantConnect.Brokerages.dYdX.Tests.dll

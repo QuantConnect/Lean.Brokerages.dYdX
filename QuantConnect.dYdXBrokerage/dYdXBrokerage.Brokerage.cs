@@ -46,7 +46,7 @@ public partial class dYdXBrokerage
             {
                 continue;
             }
-
+            _orderBrokerIdToClientIdMap.TryAdd(dydxOrder.Id, dydxOrder.ClientId);
             orders.Add(order);
         }
 
@@ -214,7 +214,6 @@ public partial class dYdXBrokerage
             OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1, "Order already canceled"));
             return false;
         }
-
 
         // TODO: Do we need to remote map record for cancelled orders?
         if (!_orderBrokerIdToClientIdMap.TryGetValue(order.BrokerId.First(), out var clientId))

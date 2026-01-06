@@ -21,25 +21,21 @@ using System.Linq;
 
 namespace QuantConnect.Brokerages.dYdX.Tests
 {
-    [TestFixture, Ignore("This test requires a configured TemplateExchangeInfoDownloader")]
+    [TestFixture]
     public class dYdXExchangeInfoDownloaderTests
     {
         [Test]
         public void GetsExchangeInfo()
         {
-            var eid = Composer.Instance.GetExportedValueByTypeName<IExchangeInfoDownloader>("TemplateExchangeInfoDownloader");
+            var eid = Composer.Instance.GetExportedValueByTypeName<IExchangeInfoDownloader>("dYdXExchangeInfoDownloader");
             var tickers = eid.Get().ToList();
 
             Assert.IsTrue(tickers.Any());
-            var previousTicker = string.Empty;
             foreach (var tickerLine in tickers)
             {
                 Assert.IsTrue(tickerLine.StartsWith(eid.Market, StringComparison.OrdinalIgnoreCase));
                 var data = tickerLine.Split(",");
-                Assert.AreEqual(10, data.Length);
-                var ticker = data[1];
-                Assert.Greater(string.Compare(ticker, previousTicker, StringComparison.Ordinal), 0);
-                previousTicker = ticker;
+                Assert.AreEqual(12, data.Length);
             }
         }
     }
