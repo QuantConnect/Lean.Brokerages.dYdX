@@ -45,7 +45,7 @@ public class Wallet
     public uint SubaccountNumber { get; }
     public ulong Sequence { get; }
     public string ChainId { get; }
-    public ulong? AuthenticatorId { get; set; }
+    public ulong? AuthenticatorId { private get; set; }
 
     /// <summary>
     /// Initializes a new instance of the Wallet class
@@ -58,7 +58,6 @@ public class Wallet
     /// <param name="subaccountNumber">The subaccount number for the wallet</param>
     /// <param name="sequence">The sequence number for the wallet</param>
     /// <param name="chainId">The chain ID for the wallet</param>
-    /// <param name="authenticatorId">The authenticator ID for the wallet</param>
     /// <param name="authenticators">The authenticators for the wallet</param>
     private Wallet(string privateKey,
         string publicKey,
@@ -68,8 +67,7 @@ public class Wallet
         uint subaccountNumber,
         ulong sequence,
         string chainId,
-        ulong? authenticatorId = null,
-        List<ulong> authenticators = null)
+        Queue<ulong> authenticators)
     {
         PrivateKey = privateKey;
         PublicKey = publicKey;
@@ -79,11 +77,7 @@ public class Wallet
         SubaccountNumber = subaccountNumber;
         Sequence = sequence;
         ChainId = chainId;
-        AuthenticatorId = authenticatorId;
-        if (authenticators != null)
-        {
-            _authenticators = new Queue<ulong>(authenticators);
-        }
+        _authenticators = authenticators;
     }
 
     /// <summary>
@@ -154,20 +148,12 @@ public class Wallet
 
         if (!_authenticators.IsNullOrEmpty())
         {
-            authenticatorId = _authenticators.Peek();
+            authenticatorId = _authenticators.Dequeue();
             return true;
         }
 
         authenticatorId = 0;
         return false;
-    }
-
-    public void DequeueAuthenticatorId()
-    {
-        if (_authenticators.Count > 0)
-        {
-            _authenticators.Dequeue();
-        }
     }
 
     public class Builder
@@ -295,22 +281,25 @@ public class Wallet
                 privateKeyHex = PrivateKeyHexFromMnemonic(_mnemonic);
             }
 
-            List<ulong> authenticators = null;
+            var authenticators = new Queue<ulong>();
             if (privateKeyHex == null && _authenticatorPrivateKey != null)
             {
-                authenticators = _authenticatorId.HasValue
-                    ? [_authenticatorId.Value]
-                    : _apiClient.Node.GetAuthenticators(_address);
-                if (authenticators.Count == 0 || authenticators.Count > MaxAuthenticatorsQueueSize)
+                if (_authenticatorId.HasValue)
+                {
+                    authenticators.Enqueue(_authenticatorId.Value);
+                }
+                else
+                {
+                    _apiClient.Node.GetAuthenticators(_address)
+                        .DoForEach(authId => authenticators.Enqueue(authId));
+                }
+
+                if (authenticators is { Count: 0 or > MaxAuthenticatorsQueueSize })
                 {
                     throw new InvalidOperationException("No authenticators found for address");
                 }
 
                 privateKeyHex = _authenticatorPrivateKey;
-                if (authenticators.Count == 1)
-                {
-                    _authenticatorId = authenticators.First();
-                }
             }
 
             if (string.IsNullOrWhiteSpace(privateKeyHex))
@@ -329,7 +318,6 @@ public class Wallet
                 _subaccountNumber,
                 account.Sequence,
                 _chainId,
-                _authenticatorId,
                 authenticators
             );
         }

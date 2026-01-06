@@ -81,7 +81,7 @@ public class dYdXNodeClient : IDisposable
         return accountResponse.Account;
     }
 
-    public List<ulong> GetAuthenticators(string address)
+    public IEnumerable<ulong> GetAuthenticators(string address)
     {
         var response = _accountPlusService.GetAuthenticators(new GetAuthenticatorsRequest { Account = address });
         if (response.AccountAuthenticators.IsNullOrEmpty())
@@ -89,7 +89,7 @@ public class dYdXNodeClient : IDisposable
             throw new InvalidOperationException("No authenticators found for the provided address");
         }
 
-        return response.AccountAuthenticators.Select(authenticator => authenticator.Id).ToList();
+        return response.AccountAuthenticators.Select(authenticator => authenticator.Id);
     }
 
     public dYdXPlaceOrderResponse PlaceOrder(Wallet wallet, Order order, ulong gasLimit)
@@ -134,15 +134,13 @@ public class dYdXNodeClient : IDisposable
             var response = BroadcastTransaction(wallet, txBody, gasLimit);
             if (response.TxResponse.Code != ErrorCodeUnauthorized)
             {
-                if (response.TxResponse.Code == 0)
-                {
-                    // Cache the successful authenticator ID to avoid unnecessary retries on subsequent transactions
-                    wallet.AuthenticatorId = authenticatorId;
-                }
+                wallet.AuthenticatorId = authenticatorId;
 
                 return response;
             }
-            wallet.DequeueAuthenticatorId();
+
+            // invalidate the authenticator ID as we received unauthorized error code and retry the transaction
+            wallet.AuthenticatorId = null;
         }
     }
 
