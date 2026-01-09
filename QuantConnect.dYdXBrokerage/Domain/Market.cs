@@ -278,6 +278,7 @@ public class Market
             _gtcWarningSent = true;
             OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1, "GTC time in force not fully supported, order will expire in 90 days."));
         }
+
         var expiry = order.TimeInForce switch
         {
             GoodTilDateTimeInForce dateTimeInForce => dateTimeInForce.Expiry,
@@ -343,14 +344,15 @@ public class Market
 
     private static ulong GetConditionalOrderTriggerSubticks(Order order, SymbolProperties symbolProperties, Models.Symbol marketInfo)
     {
-        var stopPrice = order switch
+        switch (order)
         {
-            StopMarketOrder stopMarket => stopMarket.StopPrice,
-            StopLimitOrder stopLimit => stopLimit.StopPrice,
-            _ => 0m
-        };
-
-        return CalculateSubticks(stopPrice, symbolProperties, marketInfo);
+            case StopMarketOrder stopMarket:
+                return CalculateSubticks(stopMarket.StopPrice, symbolProperties, marketInfo);
+            case StopLimitOrder stopLimit:
+                return CalculateSubticks(stopLimit.StopPrice, symbolProperties, marketInfo);
+            default:
+                return 0;
+        }
     }
 
     private static dYdXOrder.Types.ConditionType GetConditionType(OrderType type)

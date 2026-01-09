@@ -279,19 +279,7 @@ public partial class dYdXBrokerage
                 case "UNTRIGGERED":
                 case "OPEN":
                 case "BEST_EFFORT_OPENED":
-                    if (_pendingOrders.TryRemove(dydxOrder.ClientId, out var tuple))
-                    {
-                        var (resetEvent, leanSubmittedOrder) = tuple;
-                        leanSubmittedOrder.BrokerId.Add(dydxOrder.Id);
-                        _orderBrokerIdToClientIdMap.TryAdd(dydxOrder.Id, dydxOrder.ClientId);
-                        OnOrderEvent(new OrderEvent(leanSubmittedOrder, DateTime.UtcNow, OrderFee.Zero,
-                            "dYdX Order Event")
-                        {
-                            Status = OrderStatus.Submitted
-                        });
-                        resetEvent.Set();
-                    }
-
+                    TryHandleOpen(dydxOrder);
                     break;
 
                 case "CANCELED":
@@ -320,11 +308,37 @@ public partial class dYdXBrokerage
         }
     }
 
+    private bool TryHandleOpen(OrderSubaccountMessage dydxOrder)
+    {
+        if (_pendingOrders.TryRemove(dydxOrder.ClientId, out var tuple))
+        {
+            var (resetEvent, leanSubmittedOrder) = tuple;
+            leanSubmittedOrder.BrokerId.Add(dydxOrder.Id);
+            _orderBrokerIdToClientIdMap.TryAdd(dydxOrder.Id, dydxOrder.ClientId);
+            OnOrderEvent(new OrderEvent(leanSubmittedOrder, DateTime.UtcNow, OrderFee.Zero,
+                "dYdX Order Event")
+            {
+                Status = OrderStatus.Submitted
+            });
+            resetEvent.Set();
+            return true;
+        }
+
+        return false;
+    }
+
     private void HandleFills(OrderSubaccountMessage dydxOrder, SubaccountsUpdateMessage messageContents)
     {
         try
         {
             var leanOrder = _orderProvider.GetOrdersByBrokerageId(dydxOrder.Id)?.SingleOrDefault();
+
+            // check if FILL event arrived before OPEN
+            if (leanOrder == null && TryHandleOpen(dydxOrder))
+            {
+                leanOrder = _orderProvider.GetOrdersByBrokerageId(dydxOrder.Id)?.SingleOrDefault();
+            }
+
             if (leanOrder == null)
             {
                 // not our order, nothing else to do here
