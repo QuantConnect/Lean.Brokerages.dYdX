@@ -38,7 +38,7 @@ namespace QuantConnect.Brokerages.dYdX.ToolBox
         public IEnumerable<string> Get()
         {
             const int quoteQuantumsAtomicResolution = -6;
-            var baseUrl = Config.Get("dydx-indexer-url", "https://indexer.dydx.trade");
+            var baseUrl = Config.Get("dydx-indexer-url", "https://indexer.dydx.trade/v4");
 
             var indexerApi = new dYdXIndexerClient(baseUrl);
             var symbols = indexerApi.GetExchangeInfo().Symbols.Values;

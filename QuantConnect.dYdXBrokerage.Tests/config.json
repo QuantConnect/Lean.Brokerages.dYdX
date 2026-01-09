@@ -2,8 +2,8 @@
   "data-folder": "../../../../Lean/Data/",
 
   // dydx configuration
-  "dydx-private-key-hex": "e92a6595c934c991d3b3e987ea9b3125bf61a076deab3a9cb519787b7b3e8d77",
-  "dydx-address": "dydx14zzueazeh0hj67cghhf9jypslcf9sh2n5k6art", //DYDX_TEST_ADDRESS
+  "dydx-private-key-hex": "0x933fd548827550f2a3560cf1ec0f30823ba7c9699a42ed6d8978726791ce8aef",
+  "dydx-address": "dydx1067v37ykkf7muydw77lzp3m8j05ewpe3p33fuc", //DYDX_TEST_ADDRESS
   "dydx-subaccount-number": 0,
   "dydx-node-api-rest": "https://test-dydx-rest.kingnodes.com",
   "dydx-node-api-grpc": "https://test-dydx-grpc.kingnodes.com:443",

@@ -21,7 +21,7 @@ namespace QuantConnect.Brokerages.dYdX.Models;
 public class OrderDto
 {
     public string Id { get; set; }
-    public string ClientId { get; set; }
+    public uint ClientId { get; set; }
     public OrderDirection Side { get; set; }
     public decimal Size { get; set; }
     public string TotalFilled { get; set; }

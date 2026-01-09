@@ -15,7 +15,6 @@
 
 using System;
 using NUnit.Framework;
-using QuantConnect.Tests;
 using QuantConnect.Interfaces;
 using QuantConnect.Securities;
 using System.Collections.Generic;
@@ -23,7 +22,6 @@ using Moq;
 using QuantConnect.Configuration;
 using QuantConnect.Data;
 using QuantConnect.Data.Market;
-using QuantConnect.Lean.Engine.DataFeeds;
 using QuantConnect.Packets;
 using QuantConnect.Tests.Brokerages;
 using QuantConnect.Tests.Common.Securities;
@@ -31,6 +29,7 @@ using QuantConnect.Tests.Common.Securities;
 namespace QuantConnect.Brokerages.dYdX.Tests
 {
     [TestFixture]
+    [Explicit("Requires manual execution on MAINNET due to reliance on real-time market volatility for order fills.")]
     public partial class dYdXBrokerageTests : BrokerageTests
     {
         private static readonly Symbol _ethusd = Symbol.Create("ETHUSD", SecurityType.CryptoFuture, Market.dYdX);
@@ -38,18 +37,18 @@ namespace QuantConnect.Brokerages.dYdX.Tests
         protected override Symbol Symbol => _ethusd;
         protected override SecurityType SecurityType => SecurityType.CryptoFuture;
 
-        protected override decimal GetDefaultQuantity() => 0.01m;
+        protected override decimal GetDefaultQuantity() => 0.001m;
 
         protected override IBrokerage CreateBrokerage(IOrderProvider orderProvider, ISecurityProvider securityProvider)
         {
             var privateKey = Config.Get("dydx-private-key-hex");
             var address = Config.Get("dydx-address");
             var subaccountNumber = checked((uint)Config.GetInt("dydx-subaccount-number"));
-            var nodeUrlRest = Config.Get("dydx-node-api-rest");
-            var nodeUrlGrpc = Config.Get("dydx-node-api-grpc");
-            var indexerUrlRest = Config.Get("dydx-indexer-api-rest");
-            var indexerUrlWss = Config.Get("dydx-indexer-api-wss");
-            var chainId = Config.Get("dydx-chain-id");
+            var nodeUrlRest = Config.Get("dydx-node-api-rest", "https://test-dydx-rest.kingnodes.com");
+            var nodeUrlGrpc = Config.Get("dydx-node-api-grpc", "https://test-dydx-grpc.kingnodes.com:443");
+            var indexerUrlRest = Config.Get("dydx-indexer-api-rest", "https://indexer.v4testnet.dydx.exchange/v4");
+            var indexerUrlWss = Config.Get("dydx-indexer-api-wss", "wss://indexer.v4testnet.dydx.exchange/v4/ws");
+            var chainId = Config.Get("dydx-chain-id", "dydx-testnet-4");
 
             var securities = new SecurityManager(new TimeKeeper(DateTime.UtcNow, TimeZones.NewYork))
             {
@@ -82,6 +81,15 @@ namespace QuantConnect.Brokerages.dYdX.Tests
 
         protected override bool IsAsync() => true;
 
+
+        protected override bool IsCancelAsync()
+        {
+            // Although dYdX cancellation is asynchronous, we return false here because
+            // BrokerageTests.CancelOrders cannot properly handle the early return
+            // in the Brokerage.CancelOrder method.
+            return false;
+        }
+
         protected override decimal GetAskPrice(Symbol symbol)
         {
             throw new NotImplementedException();
@@ -92,54 +100,49 @@ namespace QuantConnect.Brokerages.dYdX.Tests
         /// </summary>
         private static IEnumerable<TestCaseData> OrderParameters()
         {
-            yield return new TestCaseData(new MarketOrderTestParameters(Symbols.BTCUSD));
-            yield return new TestCaseData(new LimitOrderTestParameters(Symbols.BTCUSD, 10000m, 0.01m));
-            yield return new TestCaseData(new StopMarketOrderTestParameters(Symbols.BTCUSD, 10000m, 0.01m));
-            yield return new TestCaseData(new StopLimitOrderTestParameters(Symbols.BTCUSD, 10000m, 0.01m));
-            yield return new TestCaseData(new LimitIfTouchedOrderTestParameters(Symbols.BTCUSD, 10000m, 0.01m));
-
-            var optionSymbol = Symbol.CreateOption(Symbols.SPY, Market.USA, OptionStyle.American, OptionRight.Call,
-                200m, new DateTime(2029, 12, 19));
-            yield return new TestCaseData(new MarketOrderTestParameters(optionSymbol));
+            yield return new TestCaseData(new MarketOrderTestParameters(_ethusd));
+            yield return new TestCaseData(new NonUpdateableLimitOrderTestParameters(_ethusd, 10000m, 0.01m));
+            yield return new TestCaseData(new NonUpdateableStopMarketOrderTestParameters(_ethusd, 10000m, 0.01m));
+            yield return new TestCaseData(new NonUpdateableStopLimitOrderTestParameters(_ethusd, 10000m, 0.01m));
         }
 
-        [Test, TestCaseSource(nameof(OrderParameters)), Ignore("Not implemented")]
+        [Test, TestCaseSource(nameof(OrderParameters))]
         public override void CancelOrders(OrderTestParameters parameters)
         {
             base.CancelOrders(parameters);
         }
 
-        [Test, TestCaseSource(nameof(OrderParameters)), Ignore("Not implemented")]
+        [Test, TestCaseSource(nameof(OrderParameters))]
         public override void LongFromZero(OrderTestParameters parameters)
         {
             base.LongFromZero(parameters);
         }
 
-        [Test, TestCaseSource(nameof(OrderParameters)), Ignore("Not implemented")]
+        [Test, TestCaseSource(nameof(OrderParameters))]
         public override void CloseFromLong(OrderTestParameters parameters)
         {
             base.CloseFromLong(parameters);
         }
 
-        [Test, TestCaseSource(nameof(OrderParameters)), Ignore("Not implemented")]
+        [Test, TestCaseSource(nameof(OrderParameters))]
         public override void ShortFromZero(OrderTestParameters parameters)
         {
             base.ShortFromZero(parameters);
         }
 
-        [Test, TestCaseSource(nameof(OrderParameters)), Ignore("Not implemented")]
+        [Test, TestCaseSource(nameof(OrderParameters))]
         public override void CloseFromShort(OrderTestParameters parameters)
         {
             base.CloseFromShort(parameters);
         }
 
-        [Test, TestCaseSource(nameof(OrderParameters)), Ignore("Not implemented")]
+        [Test, TestCaseSource(nameof(OrderParameters))]
         public override void ShortFromLong(OrderTestParameters parameters)
         {
             base.ShortFromLong(parameters);
         }
 
-        [Test, TestCaseSource(nameof(OrderParameters)), Ignore("Not implemented")]
+        [Test, TestCaseSource(nameof(OrderParameters))]
         public override void LongFromShort(OrderTestParameters parameters)
         {
             base.LongFromShort(parameters);

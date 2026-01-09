@@ -14,143 +14,141 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
-using QuantConnect.Brokerages.dYdX;
 using QuantConnect.Configuration;
 using QuantConnect.Data;
-using QuantConnect.Tests;
 using QuantConnect.Logging;
 using QuantConnect.Securities;
 using QuantConnect.Data.Market;
-using QuantConnect.Lean.Engine.DataFeeds;
 using QuantConnect.Lean.Engine.HistoricalData;
+using QuantConnect.Tests;
 
 namespace QuantConnect.Brokerages.dYdX.Tests
 {
-    [TestFixture, Ignore("Not implemented")]
+    [TestFixture]
     public class dYdXBrokerageHistoryProviderTests
     {
-        private static TestCaseData[] TestParameters
+        private static readonly Symbol _btcusd = Symbol.Create("BTCUSD", SecurityType.CryptoFuture, Market.dYdX);
+
+        private static IEnumerable<TestCaseData> TestParameters
         {
             get
             {
-                return new[]
-                {
-                    // valid parameters, example:
-                    new TestCaseData(Symbols.BTCUSD, Resolution.Tick, TimeSpan.FromMinutes(1), TickType.Quote,
-                        typeof(Tick), false),
-                    new TestCaseData(Symbols.BTCUSD, Resolution.Minute, TimeSpan.FromMinutes(10), TickType.Quote,
-                        typeof(QuoteBar), false),
-                    new TestCaseData(Symbols.BTCUSD, Resolution.Daily, TimeSpan.FromDays(10), TickType.Quote,
-                        typeof(QuoteBar), false),
+                TestGlobals.Initialize();
 
-                    new TestCaseData(Symbols.BTCUSD, Resolution.Tick, TimeSpan.FromMinutes(1), TickType.Trade,
-                        typeof(Tick), false),
-                    new TestCaseData(Symbols.BTCUSD, Resolution.Minute, TimeSpan.FromMinutes(10), TickType.Trade,
+                return
+                [
+                    new(_btcusd, Resolution.Minute, TimeSpan.FromMinutes(10), TickType.Trade,
                         typeof(TradeBar), false),
-                    new TestCaseData(Symbols.BTCUSD, Resolution.Daily, TimeSpan.FromDays(10), TickType.Trade,
+                    new(_btcusd, Resolution.Hour, TimeSpan.FromHours(10), TickType.Trade,
+                        typeof(TradeBar), false),
+                    new(_btcusd, Resolution.Daily, TimeSpan.FromDays(10), TickType.Trade,
                         typeof(TradeBar), false),
 
-                    // invalid parameter, validate SecurityType more accurate
-                    new TestCaseData(Symbols.SPY, Resolution.Hour, TimeSpan.FromHours(14), TickType.Quote,
+                    new(_btcusd, Resolution.Minute, TimeSpan.FromMinutes(10),
+                        TickType.OpenInterest,
+                        typeof(OpenInterest), false),
+                    new(_btcusd, Resolution.Hour, TimeSpan.FromHours(10), TickType.OpenInterest,
+                        typeof(OpenInterest), false),
+                    new(_btcusd, Resolution.Daily, TimeSpan.FromDays(10), TickType.OpenInterest,
+                        typeof(OpenInterest), false),
+
+                    // invalid parameter, return null if TickType.Quote
+                    new(_btcusd, Resolution.Daily, TimeSpan.FromDays(10), TickType.Quote,
                         typeof(QuoteBar), true),
 
-                    /// New Listed Symbol on Brokerage <see cref="Slice.SymbolChangedEvents"/>
-                    new TestCaseData(Symbol.Create("SUSHIGBP", SecurityType.Crypto, Market.Coinbase), Resolution.Minute,
-                        TimeSpan.FromHours(2), TickType.Trade, typeof(TradeBar), false),
+                    // invalid parameter, validate SecurityType more accurate
+                    new(Symbols.SPY, Resolution.Hour, TimeSpan.FromHours(14), TickType.Quote,
+                        typeof(QuoteBar), true),
 
-                    /// Symbol was delisted form Brokerage (can return history data or not) <see cref="Slice.Delistings"/>
-                    new TestCaseData(Symbol.Create("SNTUSD", SecurityType.Crypto, Market.Coinbase), Resolution.Daily,
-                        TimeSpan.FromDays(14), TickType.Trade, typeof(TradeBar), true),
-                };
+                    // Symbol was delisted form Brokerage (can return history data or not) <see cref="Slice.Delistings"/>
+                    new(Symbol.Create("MATICUSD", SecurityType.CryptoFuture, Market.dYdX),
+                        Resolution.Daily,
+                        TimeSpan.FromDays(14), TickType.Trade, typeof(TradeBar), true)
+                ];
             }
         }
 
         [Test, TestCaseSource(nameof(TestParameters))]
-        public void GetsHistory(Symbol symbol, Resolution resolution, TimeSpan period, TickType tickType, Type dataType,
-            bool throwsException)
+        public void GetsHistory(Symbol symbol, Resolution resolution, TimeSpan period, TickType tickType, Type dataType, bool invalidRequest)
         {
-            TestDelegate test = () =>
+            var brokerage = CreateBrokerage();
+
+            var historyProvider = new BrokerageHistoryProvider();
+            historyProvider.SetBrokerage(brokerage);
+            historyProvider.Initialize(new HistoryProviderInitializeParameters(null, null, null,
+                null, null, null, null,
+                false, null, null, new AlgorithmSettings()));
+
+            var marketHoursDatabase = MarketHoursDatabase.FromDataFolder();
+            var now = DateTime.UtcNow;
+            var requests = new[]
             {
-                var brokerage = CreateBrokerage();
-
-                var historyProvider = new BrokerageHistoryProvider();
-                historyProvider.SetBrokerage(brokerage);
-                historyProvider.Initialize(new HistoryProviderInitializeParameters(null, null, null,
-                    null, null, null, null,
-                    false, null, null, null));
-
-                var marketHoursDatabase = MarketHoursDatabase.FromDataFolder();
-                var now = DateTime.UtcNow;
-                var requests = new[]
-                {
-                    new HistoryRequest(now.Add(-period),
-                        now,
-                        dataType,
-                        symbol,
-                        resolution,
-                        marketHoursDatabase.GetExchangeHours(symbol.ID.Market, symbol, symbol.SecurityType),
-                        marketHoursDatabase.GetDataTimeZone(symbol.ID.Market, symbol, symbol.SecurityType),
-                        resolution,
-                        false,
-                        false,
-                        DataNormalizationMode.Adjusted,
-                        tickType)
-                };
-
-                var historyArray = historyProvider.GetHistory(requests, TimeZones.Utc).ToArray();
-                foreach (var slice in historyArray)
-                {
-                    if (resolution == Resolution.Tick)
-                    {
-                        foreach (var tick in slice.Ticks[symbol])
-                        {
-                            Log.Debug($"{tick}");
-                        }
-                    }
-                    else if (slice.QuoteBars.TryGetValue(symbol, out var quoteBar))
-                    {
-                        Log.Debug($"{quoteBar}");
-                    }
-                    else if (slice.Bars.TryGetValue(symbol, out var tradeBar))
-                    {
-                        Log.Debug($"{tradeBar}");
-                    }
-                }
-
-                if (historyProvider.DataPointCount > 0)
-                {
-                    // Ordered by time
-                    Assert.That(historyArray, Is.Ordered.By("Time"));
-
-                    // No repeating bars
-                    var timesArray = historyArray.Select(x => x.Time).ToArray();
-                    Assert.AreEqual(timesArray.Length, timesArray.Distinct().Count());
-                }
-
-                Log.Trace("Data points retrieved: " + historyProvider.DataPointCount);
+                new HistoryRequest(now.Add(-period),
+                    now,
+                    dataType,
+                    symbol,
+                    resolution,
+                    marketHoursDatabase.GetExchangeHours(symbol.ID.Market, symbol, symbol.SecurityType),
+                    marketHoursDatabase.GetDataTimeZone(symbol.ID.Market, symbol, symbol.SecurityType),
+                    resolution,
+                    false,
+                    false,
+                    DataNormalizationMode.Adjusted,
+                    tickType)
             };
 
-            if (throwsException)
+            var historyArray = historyProvider.GetHistory(requests, TimeZones.Utc)?.ToArray();
+            if (invalidRequest)
             {
-                Assert.Throws<ArgumentException>(test);
+                Assert.Null(historyArray);
+                return;
             }
-            else
+
+            Assert.NotNull(historyArray);
+            foreach (var slice in historyArray)
             {
-                Assert.DoesNotThrow(test);
+                if (resolution == Resolution.Tick)
+                {
+                    foreach (var tick in slice.Ticks[symbol])
+                    {
+                        Log.Debug($"{tick}");
+                    }
+                }
+                else if (slice.QuoteBars.TryGetValue(symbol, out var quoteBar))
+                {
+                    Log.Debug($"{quoteBar}");
+                }
+                else if (slice.Bars.TryGetValue(symbol, out var tradeBar))
+                {
+                    Log.Debug($"{tradeBar}");
+                }
             }
+
+            if (historyProvider.DataPointCount > 0)
+            {
+                // Ordered by time
+                Assert.That(historyArray, Is.Ordered.By("Time"));
+
+                // No repeating bars
+                var timesArray = historyArray.Select(x => x.Time).ToArray();
+                Assert.AreEqual(timesArray.Length, timesArray.Distinct().Count());
+            }
+
+            Log.Trace("Data points retrieved: " + historyProvider.DataPointCount);
 
             Brokerage CreateBrokerage()
             {
                 var privateKey = Config.Get("dydx-private-key-hex");
                 var address = Config.Get("dydx-address");
                 var subaccountNumber = checked((uint)Config.GetInt("dydx-subaccount-number"));
-                var nodeUrlRest = Config.Get("dydx-node-api-rest");
-                var nodeUrlGrpc = Config.Get("dydx-node-api-grpc");
-                var indexerUrlRest = Config.Get("dydx-indexer-api-rest");
-                var indexerUrlWss = Config.Get("dydx-indexer-api-wss");
-                var chainId = Config.Get("dydx-chain-id");
+                var nodeUrlRest = Config.Get("dydx-node-api-rest", "https://test-dydx-rest.kingnodes.com");
+                var nodeUrlGrpc = Config.Get("dydx-node-api-grpc", "https://test-dydx-grpc.kingnodes.com:443");
+                var indexerUrlRest = Config.Get("dydx-indexer-api-rest", "https://indexer.v4testnet.dydx.exchange/v4");
+                var indexerUrlWss = Config.Get("dydx-indexer-api-wss", "wss://indexer.v4testnet.dydx.exchange/v4/ws");
+                var chainId = Config.Get("dydx-chain-id", "dydx-testnet-4");
 
                 return new dYdXBrokerage(
                     privateKey,

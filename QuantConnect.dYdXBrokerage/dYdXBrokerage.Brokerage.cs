@@ -47,6 +47,7 @@ public partial class dYdXBrokerage
                 continue;
             }
 
+            _orderBrokerIdToClientIdMap.TryAdd(dydxOrder.Id, dydxOrder.ClientId);
             orders.Add(order);
         }
 
@@ -215,7 +216,6 @@ public partial class dYdXBrokerage
             return false;
         }
 
-
         // TODO: Do we need to remote map record for cancelled orders?
         if (!_orderBrokerIdToClientIdMap.TryGetValue(order.BrokerId.First(), out var clientId))
         {
@@ -224,6 +224,7 @@ public partial class dYdXBrokerage
         }
 
         dYdXCancelOrderResponse result;
+        bool submitted = true;
         _messageHandler.WithLockedStream(() =>
         {
             try
@@ -234,34 +235,20 @@ public partial class dYdXBrokerage
             }
             catch (Exception ex)
             {
-                OnOrderEvent(new OrderEvent(order, DateTime.UtcNow, OrderFee.Zero, "dYdX Order Event: " + ex.Message)
-                {
-                    Status = OrderStatus.Invalid
-                });
+                OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1, ex.Message));
+                submitted = false;
                 return;
             }
 
-            if (result.Code == 0)
-            {
-                OnOrderEvent(new OrderEvent(order, DateTime.UtcNow, OrderFee.Zero, "dYdX Order Event")
-                {
-                    Status = OrderStatus.CancelPending
-                });
-            }
-            else
+            if (result.Code != 0)
             {
                 var message =
                     $"Cancel order failed, Order Id: {order.Id} timestamp: {order.Time} quantity: {order.Quantity} content: {result.Message}";
-                OnOrderEvent(new OrderEvent(
-                        order,
-                        DateTime.UtcNow,
-                        OrderFee.Zero,
-                        result.Message)
-                    { Status = OrderStatus.Invalid });
                 OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1, message));
+                submitted = false;
             }
         });
-        return true;
+        return submitted;
     }
 
     /// <summary>
@@ -269,6 +256,11 @@ public partial class dYdXBrokerage
     /// </summary>
     public override void Connect()
     {
+        if (_algorithm == null)
+        {
+            return;
+        }
+
         if (IsConnected)
         {
             return;

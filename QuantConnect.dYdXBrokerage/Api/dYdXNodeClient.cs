@@ -94,7 +94,12 @@ public class dYdXNodeClient : IDisposable
 
     public dYdXPlaceOrderResponse PlaceOrder(Wallet wallet, Order order, ulong gasLimit)
     {
-        var response = ExecuteTransaction(wallet, gasLimit, (txBody) => AddPlaceOrderMessage(txBody, order));
+        var response = ExecuteTransaction(
+            wallet,
+            order.OrderId.OrderFlags,
+            gasLimit,
+            txBody => AddPlaceOrderMessage(txBody, order));
+
         return new dYdXPlaceOrderResponse
         {
             Code = response.TxResponse.Code,
@@ -106,7 +111,12 @@ public class dYdXNodeClient : IDisposable
 
     public dYdXCancelOrderResponse CancelOrder(Wallet wallet, Order order, ulong gasLimit)
     {
-        var response = ExecuteTransaction(wallet, gasLimit, (txBody) => AdddCancelOrderMessage(txBody, order));
+        var response = ExecuteTransaction(
+            wallet,
+            order.OrderId.OrderFlags,
+            gasLimit,
+            txBody => AdddCancelOrderMessage(txBody, order));
+
         return new dYdXCancelOrderResponse
         {
             Code = response.TxResponse.Code,
@@ -116,7 +126,11 @@ public class dYdXNodeClient : IDisposable
         };
     }
 
-    private BroadcastTxResponse ExecuteTransaction(Wallet wallet, ulong gasLimit, Action<TxBody> bodyBuilder)
+    private BroadcastTxResponse ExecuteTransaction(
+        Wallet wallet,
+        uint orderFlags,
+        ulong gasLimit,
+        Action<TxBody> bodyBuilder)
     {
         while (true)
         {
@@ -134,6 +148,11 @@ public class dYdXNodeClient : IDisposable
             var response = BroadcastTransaction(wallet, txBody, gasLimit);
             if (response.TxResponse.Code != ErrorCodeUnauthorized)
             {
+                if (response.TxResponse.Code == 0 && orderFlags != (uint) OrderFlags.ShortTerm)
+                {
+                    wallet.IncrementSequence();
+                }
+
                 wallet.AuthenticatorId = authenticatorId;
 
                 return response;
