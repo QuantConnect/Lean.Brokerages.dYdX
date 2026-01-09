@@ -38,10 +38,13 @@ public class Market
     private uint _lastBlockHeight;
     private DateTime _lastMarketRefreshTime;
     private DateTime _lastBlockHeightUpdateTime;
+    private bool _gtcWarningSent;
 
     public const ulong DefaultGasLimit = 1_000_000;
     private const uint ShortBlockWindow = 20u;
     private const decimal MarketPriceBuffer = 0.05m; //5% buffer
+
+    public event Action<BrokerageMessageEvent> BrokerageMessage;
 
     public Market(
         Wallet wallet,
@@ -266,14 +269,30 @@ public class Market
     private void ConfigureLongTermOrder(dYdXOrder dydxOrder, Order order, Models.Symbol marketInfo,
         SymbolProperties symbolProperties)
     {
-        if (order.TimeInForce is not GoodTilDateTimeInForce dateTimeInForce)
+        // simulate long term order expiry
+        // Day => add 24 hours
+        // GoodTilCanceled => add 90 days,
+        // max supported by dYdX is 95 days, ref https://github.com/dydxprotocol/v4-chain/blob/4eb219b1b726df9ba17c9939e8bb9296f5e98bb3/protocol/x/clob/types/constants.go#L17
+        if (!_gtcWarningSent)
         {
-            // TODO: how to convert other time in force types?
-            throw new Exception($"Expected GoodTilDateTimeInForce {order.Type}");
+            _gtcWarningSent = true;
+            OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1, "GTC time in force not fully supported, order will expire in 90 days."));
         }
+        var expiry = order.TimeInForce switch
+        {
+            GoodTilDateTimeInForce dateTimeInForce => dateTimeInForce.Expiry,
+            DayTimeInForce => DateTime.UtcNow.AddHours(24),
+            GoodTilCanceledTimeInForce => DateTime.UtcNow.AddDays(90),
+            _ => throw new NotImplementedException($"Order's parameter '{nameof(order.TimeInForce)}' of type '{order.TimeInForce.GetType().Name}' is not supported.")
+        };
 
-        dydxOrder.GoodTilBlockTime = Convert.ToUInt32(Time.DateTimeToUnixTimeStamp(dateTimeInForce.Expiry));
+        dydxOrder.GoodTilBlockTime = Convert.ToUInt32(Time.DateTimeToUnixTimeStamp(expiry));
         dydxOrder.Subticks = CalculateSubticks(order.Price, symbolProperties, marketInfo);
+    }
+
+    private void OnMessage(BrokerageMessageEvent brokerageMessageEvent)
+    {
+        BrokerageMessage?.Invoke(brokerageMessageEvent);
     }
 
     private static ulong CalculateQuantums(decimal quantity, SymbolProperties symbolProperties,

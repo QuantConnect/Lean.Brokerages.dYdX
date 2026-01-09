@@ -43,7 +43,7 @@ public class Wallet
     public string Address { get; }
     public ulong AccountNumber { get; }
     public uint SubaccountNumber { get; }
-    public ulong Sequence { get; }
+    public ulong Sequence { get; private set; }
     public string ChainId { get; }
     public ulong? AuthenticatorId { private get; set; }
 
@@ -155,6 +155,14 @@ public class Wallet
         authenticatorId = 0;
         return false;
     }
+
+    public ulong IncrementSequence()
+    {
+        // Cosmos SDK sequence numbers, verified to be strictly increasing for stateful orders
+        Sequence++;
+        return Sequence;
+    }
+
 
     public class Builder
     {

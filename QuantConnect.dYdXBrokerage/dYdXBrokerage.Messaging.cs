@@ -276,6 +276,7 @@ public partial class dYdXBrokerage
         {
             switch (dydxOrder.Status)
             {
+                case "UNTRIGGERED":
                 case "OPEN":
                 case "BEST_EFFORT_OPENED":
                     if (_pendingOrders.TryRemove(dydxOrder.ClientId, out var tuple))
@@ -296,7 +297,7 @@ public partial class dYdXBrokerage
                 case "CANCELED":
                 case "BEST_EFFORT_CANCELED":
                     var leanCancelOrder =
-                        _algorithm.Transactions.GetOrdersByBrokerageId(dydxOrder.Id)?.SingleOrDefault();
+                        _orderProvider.GetOrdersByBrokerageId(dydxOrder.Id)?.SingleOrDefault();
                     if (leanCancelOrder != null)
                     {
                         OnOrderEvent(new OrderEvent(leanCancelOrder, DateTime.UtcNow, OrderFee.Zero, "dYdX Order Event")

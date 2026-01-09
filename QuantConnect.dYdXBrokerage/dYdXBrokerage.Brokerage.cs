@@ -46,6 +46,7 @@ public partial class dYdXBrokerage
             {
                 continue;
             }
+
             _orderBrokerIdToClientIdMap.TryAdd(dydxOrder.Id, dydxOrder.ClientId);
             orders.Add(order);
         }
@@ -240,14 +241,7 @@ public partial class dYdXBrokerage
                 return;
             }
 
-            if (result.Code == 0)
-            {
-                OnOrderEvent(new OrderEvent(order, DateTime.UtcNow, OrderFee.Zero, "dYdX Order Event")
-                {
-                    Status = OrderStatus.CancelPending
-                });
-            }
-            else
+            if (result.Code != 0)
             {
                 var message =
                     $"Cancel order failed, Order Id: {order.Id} timestamp: {order.Time} quantity: {order.Quantity} content: {result.Message}";
@@ -268,6 +262,11 @@ public partial class dYdXBrokerage
     /// </summary>
     public override void Connect()
     {
+        if (_algorithm == null)
+        {
+            return;
+        }
+
         if (IsConnected)
         {
             return;

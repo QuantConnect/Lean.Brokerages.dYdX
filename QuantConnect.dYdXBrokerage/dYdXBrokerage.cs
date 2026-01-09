@@ -240,6 +240,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
             }
 
             _market = new Domain.Market(Wallet, _symbolMapper, SymbolPropertiesDatabase, _apiClient);
+            _market.BrokerageMessage += OnMessage;
             Connect();
         }
     }
