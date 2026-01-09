@@ -219,7 +219,7 @@ public class Market
             ReduceOnly = orderProperties?.ReduceOnly == true,
             ClientMetadata = GetClientMetadata(order.Type),
             ConditionType = GetConditionType(order.Type),
-            ConditionalOrderTriggerSubticks = GetConditionalOrderTriggerSubticks(order, symbolProperties)
+            ConditionalOrderTriggerSubticks = GetConditionalOrderTriggerSubticks(order, symbolProperties, marketInfo)
         };
 
         if (orderFlag == OrderFlags.ShortTerm)
@@ -341,7 +341,7 @@ public class Market
         };
     }
 
-    private static ulong GetConditionalOrderTriggerSubticks(Order order, SymbolProperties symbolProperties)
+    private static ulong GetConditionalOrderTriggerSubticks(Order order, SymbolProperties symbolProperties, Models.Symbol marketInfo)
     {
         var stopPrice = order switch
         {
@@ -350,7 +350,7 @@ public class Market
             _ => 0m
         };
 
-        return Convert.ToUInt64(stopPrice * symbolProperties.PriceMagnifier);
+        return CalculateSubticks(stopPrice, symbolProperties, marketInfo);
     }
 
     private static dYdXOrder.Types.ConditionType GetConditionType(OrderType type)
