@@ -29,6 +29,7 @@ using QuantConnect.Tests.Common.Securities;
 namespace QuantConnect.Brokerages.dYdX.Tests
 {
     [TestFixture]
+    [Explicit("Requires manual execution on MAINNET due to reliance on real-time market volatility for order fills.")]
     public partial class dYdXBrokerageTests : BrokerageTests
     {
         private static readonly Symbol _ethusd = Symbol.Create("ETHUSD", SecurityType.CryptoFuture, Market.dYdX);
@@ -43,11 +44,11 @@ namespace QuantConnect.Brokerages.dYdX.Tests
             var privateKey = Config.Get("dydx-private-key-hex");
             var address = Config.Get("dydx-address");
             var subaccountNumber = checked((uint)Config.GetInt("dydx-subaccount-number"));
-            var nodeUrlRest = Config.Get("dydx-node-api-rest", "https://dydx-ops-rest.kingnodes.com:443");
-            var nodeUrlGrpc = Config.Get("dydx-node-api-grpc", "https://dydx-ops-grpc.kingnodes.com:443");
-            var indexerUrlRest = Config.Get("dydx-indexer-api-rest", "https://indexer.dydx.trade/v4");
-            var indexerUrlWss = Config.Get("dydx-indexer-api-wss", "wss://indexer.dydx.trade/v4/ws");
-            var chainId = Config.Get("dydx-chain-id", "dydx-mainnet-1");
+            var nodeUrlRest = Config.Get("dydx-node-api-rest", "https://test-dydx-rest.kingnodes.com");
+            var nodeUrlGrpc = Config.Get("dydx-node-api-grpc", "https://test-dydx-grpc.kingnodes.com:443");
+            var indexerUrlRest = Config.Get("dydx-indexer-api-rest", "https://indexer.v4testnet.dydx.exchange/v4");
+            var indexerUrlWss = Config.Get("dydx-indexer-api-wss", "wss://indexer.v4testnet.dydx.exchange/v4/ws");
+            var chainId = Config.Get("dydx-chain-id", "dydx-testnet-4");
 
             var securities = new SecurityManager(new TimeKeeper(DateTime.UtcNow, TimeZones.NewYork))
             {

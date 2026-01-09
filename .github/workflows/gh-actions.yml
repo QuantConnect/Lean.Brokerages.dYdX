@@ -45,7 +45,7 @@ jobs:
       - uses: addnab/docker-run-action@v3
         with:
           image: quantconnect/lean:foundation
-          options: --workdir /__w/Lean.Brokerages.dYdX/Lean.Brokerages.dYdX -v /home/runner/work:/__w -e QC_DYDX_ADDRESS -e QC_DYDX_PRIVATE_KEY -e QC_DYDX_SUBACCOUNT_NUMBER
+          options: --workdir /__w/Lean.Brokerages.dYdX/Lean.Brokerages.dYdX -v /home/runner/work:/__w -e QC_DYDX_ADDRESS=${{ secrets.QC_DYDX_ADDRESS }} -e QC_DYDX_PRIVATE_KEY=${{ secrets.QC_DYDX_PRIVATE_KEY }} -e QC_DYDX_SUBACCOUNT_NUMBER=${{ secrets.QC_DYDX_SUBACCOUNT_NUMBER }}
           shell: bash
           run: |
             # Build
