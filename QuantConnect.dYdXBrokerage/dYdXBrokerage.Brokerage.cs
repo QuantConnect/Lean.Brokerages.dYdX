@@ -224,6 +224,7 @@ public partial class dYdXBrokerage
         }
 
         dYdXCancelOrderResponse result;
+        bool submitted = true;
         _messageHandler.WithLockedStream(() =>
         {
             try
@@ -234,10 +235,8 @@ public partial class dYdXBrokerage
             }
             catch (Exception ex)
             {
-                OnOrderEvent(new OrderEvent(order, DateTime.UtcNow, OrderFee.Zero, "dYdX Order Event: " + ex.Message)
-                {
-                    Status = OrderStatus.Invalid
-                });
+                OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1, ex.Message));
+                submitted = false;
                 return;
             }
 
@@ -245,16 +244,11 @@ public partial class dYdXBrokerage
             {
                 var message =
                     $"Cancel order failed, Order Id: {order.Id} timestamp: {order.Time} quantity: {order.Quantity} content: {result.Message}";
-                OnOrderEvent(new OrderEvent(
-                        order,
-                        DateTime.UtcNow,
-                        OrderFee.Zero,
-                        result.Message)
-                    { Status = OrderStatus.Invalid });
                 OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1, message));
+                submitted = false;
             }
         });
-        return true;
+        return submitted;
     }
 
     /// <summary>
