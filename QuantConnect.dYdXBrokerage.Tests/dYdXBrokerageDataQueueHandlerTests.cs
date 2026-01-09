@@ -67,8 +67,8 @@ namespace QuantConnect.Brokerages.dYdX.Tests
                 };
             }
 
-            var trade = new ManualResetEvent(false);
-            var quote = new ManualResetEvent(false);
+            using var trade = new ManualResetEvent(false);
+            using var quote = new ManualResetEvent(false);
             foreach (var config in configs)
             {
                 ProcessFeed(brokerage.Subscribe(config, (s, e) => { }),
