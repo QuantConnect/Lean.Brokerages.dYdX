@@ -101,7 +101,7 @@ public class Market
 
     public Order ParseOrder(OrderDto orderDto)
     {
-        var symbol = _symbolMapper.GetLeanSymbol(orderDto.Ticker, SecurityType.CryptoFuture, QuantConnect.Market.dYdX);
+        var symbol = _symbolMapper.GetLeanSymbol(orderDto.Ticker, SecurityType.CryptoFuture, QuantConnect.Market.DYDX);
 
         decimal size = orderDto.Size, price = orderDto.Price, triggerPrice = orderDto.TriggerPrice;
         var quantity = orderDto.Side switch

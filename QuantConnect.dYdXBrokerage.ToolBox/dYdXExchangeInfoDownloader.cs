@@ -29,7 +29,7 @@ namespace QuantConnect.Brokerages.dYdX.ToolBox
         /// <summary>
         /// Market
         /// </summary>
-        public string Market => QuantConnect.Market.dYdX;
+        public string Market => QuantConnect.Market.DYDX;
 
         /// <summary>
         /// Get exchange info coma-separated data

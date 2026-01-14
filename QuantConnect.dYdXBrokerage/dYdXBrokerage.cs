@@ -57,7 +57,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
         public string OrganizationId;
     }
 
-    private const string MarketName = Market.dYdX;
+    private const string MarketName = Market.DYDX;
     private const SecurityType SecurityType = QuantConnect.SecurityType.CryptoFuture;
     private const int ProductId = 421;
 
