@@ -97,6 +97,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
     private BrokerageConcurrentMessageHandler<WebSocketMessage> _messageHandler;
 
     private readonly ManualResetEvent _connectionConfirmedEvent = new(false);
+    private bool _firstTimeConnected = false;
 
     private Wallet Wallet { get; set; }
 
@@ -489,7 +490,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
                 DataType = MarketDataType.TradeBar,
                 Period = period
             })
-            .OrderBy(oi => oi.Time);
+            .OrderBy(tb => tb.Time);
     }
 
     public override void Dispose()

@@ -288,6 +288,17 @@ public partial class dYdXBrokerage
                 // Wait for the brokerage to send the "Connected/Auth" message again
                 WaitConnectionConfirmationSync();
 
+                // Avoid emitting Reconnect event when first connection established
+                if (_firstTimeConnected)
+                {
+                    OnMessage(BrokerageMessageEvent.Reconnected(
+                        $"{nameof(dYdXBrokerage)}.{nameof(OnReconnect)}(): Connection opened"));
+                }
+                else
+                {
+                    _firstTimeConnected = true;
+                }
+
                 // Once confirmed, re-send subscriptions
                 SubscribeToFixedChannels(sender, e);
             }
