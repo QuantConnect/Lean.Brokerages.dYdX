@@ -32,7 +32,7 @@ namespace QuantConnect.Brokerages.dYdX.Tests
     [Explicit("Requires manual execution on MAINNET due to reliance on real-time market volatility for order fills.")]
     public partial class dYdXBrokerageTests : BrokerageTests
     {
-        private static readonly Symbol _ethusd = Symbol.Create("ETHUSD", SecurityType.CryptoFuture, Market.dYdX);
+        private static readonly Symbol _ethusd = Symbol.Create("ETHUSD", SecurityType.CryptoFuture, Market.DYDX);
 
         protected override Symbol Symbol => _ethusd;
         protected override SecurityType SecurityType => SecurityType.CryptoFuture;

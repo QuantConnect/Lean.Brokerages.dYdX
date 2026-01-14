@@ -25,7 +25,7 @@ public class OrderBookExtensionsTests
     public void UncrossOrderBook_WhenBidGreaterThanAsk_RemovesBothWhenSizesEqual()
     {
         // Arrange
-        var symbol = Symbol.Create("BTCUSD", SecurityType.Crypto, Market.dYdX);
+        var symbol = Symbol.Create("BTCUSD", SecurityType.Crypto, Market.DYDX);
         var orderBook = new DefaultOrderBook(symbol);
 
         orderBook.UpdateBidRow(101m, 10m);
@@ -43,7 +43,7 @@ public class OrderBookExtensionsTests
     public void UncrossOrderBook_WhenBidGreaterThanAsk_ReducesBidWhenBidSizeLarger()
     {
         // Arrange
-        var symbol = Symbol.Create("BTCUSD", SecurityType.Crypto, Market.dYdX);
+        var symbol = Symbol.Create("BTCUSD", SecurityType.Crypto, Market.DYDX);
         var orderBook = new DefaultOrderBook(symbol);
 
         orderBook.UpdateBidRow(101m, 15m);
@@ -62,7 +62,7 @@ public class OrderBookExtensionsTests
     public void UncrossOrderBook_WhenBidGreaterThanAsk_ReducesAskWhenAskSizeLarger()
     {
         // Arrange
-        var symbol = Symbol.Create("BTCUSD", SecurityType.Crypto, Market.dYdX);
+        var symbol = Symbol.Create("BTCUSD", SecurityType.Crypto, Market.DYDX);
         var orderBook = new DefaultOrderBook(symbol);
 
         orderBook.UpdateBidRow(101m, 10m);
@@ -81,7 +81,7 @@ public class OrderBookExtensionsTests
     public void UncrossOrderBook_WhenBidLessThanAsk_DoesNothing()
     {
         // Arrange
-        var symbol = Symbol.Create("BTCUSD", SecurityType.Crypto, Market.dYdX);
+        var symbol = Symbol.Create("BTCUSD", SecurityType.Crypto, Market.DYDX);
         var orderBook = new DefaultOrderBook(symbol);
 
         orderBook.UpdateBidRow(99m, 10m);
@@ -101,7 +101,7 @@ public class OrderBookExtensionsTests
     public void UncrossOrderBook_WhenMultipleCrossedLevels_UncrossesAll()
     {
         // Arrange
-        var symbol = Symbol.Create("BTCUSD", SecurityType.Crypto, Market.dYdX);
+        var symbol = Symbol.Create("BTCUSD", SecurityType.Crypto, Market.DYDX);
         var orderBook = new DefaultOrderBook(symbol);
 
         // Add multiple crossed levels
@@ -126,7 +126,7 @@ public class OrderBookExtensionsTests
     public void UncrossOrderBook_WhenSingleCrossedLevels_UncrossesAll()
     {
         // Arrange
-        var symbol = Symbol.Create("BTCUSD", SecurityType.Crypto, Market.dYdX);
+        var symbol = Symbol.Create("BTCUSD", SecurityType.Crypto, Market.DYDX);
         var orderBook = new DefaultOrderBook(symbol);
 
         // Add multiple crossed levels
@@ -151,7 +151,7 @@ public class OrderBookExtensionsTests
     public void UncrossOrderBook_WhenOrderBookEmpty_DoesNothing()
     {
         // Arrange
-        var symbol = Symbol.Create("BTCUSD", SecurityType.Crypto, Market.dYdX);
+        var symbol = Symbol.Create("BTCUSD", SecurityType.Crypto, Market.DYDX);
         var orderBook = new DefaultOrderBook(symbol);
 
         // Act
@@ -166,7 +166,7 @@ public class OrderBookExtensionsTests
     public void UncrossOrderBook_WhenOnlyBidsExist_DoesNothing()
     {
         // Arrange
-        var symbol = Symbol.Create("BTCUSD", SecurityType.Crypto, Market.dYdX);
+        var symbol = Symbol.Create("BTCUSD", SecurityType.Crypto, Market.DYDX);
         var orderBook = new DefaultOrderBook(symbol);
 
         orderBook.UpdateBidRow(100m, 10m);
@@ -184,7 +184,7 @@ public class OrderBookExtensionsTests
     public void UncrossOrderBook_WhenOnlyAsksExist_DoesNothing()
     {
         // Arrange
-        var symbol = Symbol.Create("BTCUSD", SecurityType.Crypto, Market.dYdX);
+        var symbol = Symbol.Create("BTCUSD", SecurityType.Crypto, Market.DYDX);
         var orderBook = new DefaultOrderBook(symbol);
 
         orderBook.UpdateAskRow(100m, 10m);

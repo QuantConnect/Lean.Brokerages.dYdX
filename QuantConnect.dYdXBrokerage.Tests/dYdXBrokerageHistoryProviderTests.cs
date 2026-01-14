@@ -30,7 +30,7 @@ namespace QuantConnect.Brokerages.dYdX.Tests
     [TestFixture]
     public class dYdXBrokerageHistoryProviderTests
     {
-        private static readonly Symbol _btcusd = Symbol.Create("BTCUSD", SecurityType.CryptoFuture, Market.dYdX);
+        private static readonly Symbol _btcusd = Symbol.Create("BTCUSD", SecurityType.CryptoFuture, Market.DYDX);
 
         private static IEnumerable<TestCaseData> TestParameters
         {
@@ -64,7 +64,7 @@ namespace QuantConnect.Brokerages.dYdX.Tests
                         typeof(QuoteBar), true),
 
                     // Symbol was delisted form Brokerage (can return history data or not) <see cref="Slice.Delistings"/>
-                    new(Symbol.Create("MATICUSD", SecurityType.CryptoFuture, Market.dYdX),
+                    new(Symbol.Create("MATICUSD", SecurityType.CryptoFuture, Market.DYDX),
                         Resolution.Daily,
                         TimeSpan.FromDays(14), TickType.Trade, typeof(TradeBar), true)
                 ];
