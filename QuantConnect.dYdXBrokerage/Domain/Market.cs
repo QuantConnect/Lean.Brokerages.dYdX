@@ -39,6 +39,7 @@ public class Market
     private DateTime _lastMarketRefreshTime;
     private DateTime _lastBlockHeightUpdateTime;
     private bool _gtcWarningSent;
+    private bool _stopMarketIOCWarningSent;
 
     public const ulong DefaultGasLimit = 1_000_000;
     private const uint ShortBlockWindow = 20u;
@@ -215,7 +216,7 @@ public class Market
             },
             Side = side,
             Quantums = CalculateQuantums(order.AbsoluteQuantity, symbolProperties, marketInfo),
-            TimeInForce = GetTimeInForce(order.Type, orderProperties?.PostOnly == true),
+            TimeInForce = GetTimeInForce(order.Type, orderProperties),
             ReduceOnly = orderProperties?.ReduceOnly == true,
             ClientMetadata = GetClientMetadata(order.Type),
             ConditionType = GetConditionType(order.Type),
@@ -276,7 +277,8 @@ public class Market
         if (!_gtcWarningSent)
         {
             _gtcWarningSent = true;
-            OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1, "GTC time in force not fully supported, order will expire in 90 days."));
+            OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1,
+                "GTC time in force not fully supported, order will expire in 90 days."));
         }
 
         var expiry = order.TimeInForce switch
@@ -284,7 +286,8 @@ public class Market
             GoodTilDateTimeInForce dateTimeInForce => dateTimeInForce.Expiry,
             DayTimeInForce => DateTime.UtcNow.AddHours(24),
             GoodTilCanceledTimeInForce => DateTime.UtcNow.AddDays(90),
-            _ => throw new NotImplementedException($"Order's parameter '{nameof(order.TimeInForce)}' of type '{order.TimeInForce.GetType().Name}' is not supported.")
+            _ => throw new NotImplementedException(
+                $"Order's parameter '{nameof(order.TimeInForce)}' of type '{order.TimeInForce.GetType().Name}' is not supported.")
         };
 
         dydxOrder.GoodTilBlockTime = Convert.ToUInt32(Time.DateTimeToUnixTimeStamp(expiry));
@@ -311,15 +314,43 @@ public class Market
         return Math.Max(subticks, marketInfo.SubticksPerTick);
     }
 
-    private static dYdXOrder.Types.TimeInForce GetTimeInForce(OrderType type, bool postOnly)
+    private dYdXOrder.Types.TimeInForce GetTimeInForce(OrderType type,
+        dYdXOrderProperties orderProperties = null)
     {
         return type switch
         {
-            OrderType.Limit or OrderType.StopLimit => postOnly
-                ? dYdXOrder.Types.TimeInForce.PostOnly
-                : dYdXOrder.Types.TimeInForce.Unspecified,
+            // MARKET orders: IOC if requested, otherwise Unspecified
+            OrderType.Market =>
+                orderProperties is { IOC: true }
+                    ? dYdXOrder.Types.TimeInForce.Ioc
+                    : dYdXOrder.Types.TimeInForce.Unspecified,
+
+            // LIMIT orders: PostOnly if requested, otherwise Unspecified
+            OrderType.Limit or OrderType.StopLimit  =>
+                orderProperties switch
+                {
+                    { PostOnly: true } => dYdXOrder.Types.TimeInForce.PostOnly,
+                    { IOC: true } => dYdXOrder.Types.TimeInForce.Ioc,
+                    _ => dYdXOrder.Types.TimeInForce.Unspecified
+                },
+
+            // STOP_MARKET orders: IOC
+            OrderType.StopMarket => NotifyAndSwitchStopMarketTimeInForce(),
+
             _ => dYdXOrder.Types.TimeInForce.Unspecified
         };
+    }
+
+    private dYdXOrder.Types.TimeInForce NotifyAndSwitchStopMarketTimeInForce()
+    {
+        if (!_stopMarketIOCWarningSent)
+        {
+            OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1,
+                "Execution value TIME_IN_FORCE_UNSPECIFIED not supported for STOP_MARKET. Switched to IOC"));
+            _stopMarketIOCWarningSent = true;
+        }
+
+        return dYdXOrder.Types.TimeInForce.Ioc;
     }
 
     private static uint GetClientMetadata(OrderType type)
@@ -342,7 +373,8 @@ public class Market
         };
     }
 
-    private static ulong GetConditionalOrderTriggerSubticks(Order order, SymbolProperties symbolProperties, Models.Symbol marketInfo)
+    private static ulong GetConditionalOrderTriggerSubticks(Order order, SymbolProperties symbolProperties,
+        Models.Symbol marketInfo)
     {
         switch (order)
         {
