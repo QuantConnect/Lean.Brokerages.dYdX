@@ -321,7 +321,7 @@ public class Market
                     ? dYdXOrder.Types.TimeInForce.Ioc
                     : dYdXOrder.Types.TimeInForce.Unspecified,
 
-            // LIMIT orders: PostOnly if requested, otherwise Unspecified
+            // LIMIT orders: PostOnly if requested, IOC not supported and returns code = 3002, otherwise Unspecified
             OrderType.Limit   =>
                 orderProperties switch
                 {
@@ -330,6 +330,7 @@ public class Market
                     _ => dYdXOrder.Types.TimeInForce.Unspecified
                 },
 
+            // STOP orders: support PostOnly and IOC
             OrderType.StopLimit  =>
                 orderProperties switch
                 {
