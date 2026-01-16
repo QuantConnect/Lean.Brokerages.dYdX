@@ -276,8 +276,7 @@ public class Market
         if (!_gtcWarningSent)
         {
             _gtcWarningSent = true;
-            OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1,
-                "GTC time in force not fully supported, order will expire in 90 days."));
+            OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1, "GTC time in force not fully supported, order will expire in 90 days."));
         }
 
         var expiry = order.TimeInForce switch
@@ -285,8 +284,7 @@ public class Market
             GoodTilDateTimeInForce dateTimeInForce => dateTimeInForce.Expiry,
             DayTimeInForce => DateTime.UtcNow.AddHours(24),
             GoodTilCanceledTimeInForce => DateTime.UtcNow.AddDays(90),
-            _ => throw new NotImplementedException(
-                $"Order's parameter '{nameof(order.TimeInForce)}' of type '{order.TimeInForce.GetType().Name}' is not supported.")
+            _ => throw new NotImplementedException($"Order's parameter '{nameof(order.TimeInForce)}' of type '{order.TimeInForce.GetType().Name}' is not supported.")
         };
 
         dydxOrder.GoodTilBlockTime = Convert.ToUInt32(Time.DateTimeToUnixTimeStamp(expiry));
@@ -313,8 +311,7 @@ public class Market
         return Math.Max(subticks, marketInfo.SubticksPerTick);
     }
 
-    private dYdXOrder.Types.TimeInForce GetTimeInForce(OrderType type,
-        dYdXOrderProperties orderProperties = null)
+    private dYdXOrder.Types.TimeInForce GetTimeInForce(OrderType type, dYdXOrderProperties orderProperties = null)
     {
         return type switch
         {
@@ -365,8 +362,7 @@ public class Market
         };
     }
 
-    private static ulong GetConditionalOrderTriggerSubticks(Order order, SymbolProperties symbolProperties,
-        Models.Symbol marketInfo)
+    private static ulong GetConditionalOrderTriggerSubticks(Order order, SymbolProperties symbolProperties, Models.Symbol marketInfo)
     {
         switch (order)
         {
