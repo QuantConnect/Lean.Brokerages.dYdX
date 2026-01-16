@@ -215,7 +215,7 @@ public class Market
             },
             Side = side,
             Quantums = CalculateQuantums(order.AbsoluteQuantity, symbolProperties, marketInfo),
-            TimeInForce = GetTimeInForce(order.Type, orderProperties?.PostOnly == true),
+            TimeInForce = GetTimeInForce(order.Type, orderProperties),
             ReduceOnly = orderProperties?.ReduceOnly == true,
             ClientMetadata = GetClientMetadata(order.Type),
             ConditionType = GetConditionType(order.Type),
@@ -311,13 +311,33 @@ public class Market
         return Math.Max(subticks, marketInfo.SubticksPerTick);
     }
 
-    private static dYdXOrder.Types.TimeInForce GetTimeInForce(OrderType type, bool postOnly)
+    private dYdXOrder.Types.TimeInForce GetTimeInForce(OrderType type, dYdXOrderProperties orderProperties = null)
     {
         return type switch
         {
-            OrderType.Limit or OrderType.StopLimit => postOnly
-                ? dYdXOrder.Types.TimeInForce.PostOnly
-                : dYdXOrder.Types.TimeInForce.Unspecified,
+            // MARKET orders: IOC if requested, otherwise Unspecified
+            OrderType.Market or OrderType.StopMarket  =>
+                orderProperties is { IOC: true }
+                    ? dYdXOrder.Types.TimeInForce.Ioc
+                    : dYdXOrder.Types.TimeInForce.Unspecified,
+
+            // LIMIT orders: PostOnly if requested, otherwise Unspecified
+            OrderType.Limit   =>
+                orderProperties switch
+                {
+                    { PostOnly: true } => dYdXOrder.Types.TimeInForce.PostOnly,
+                    { IOC: true } => throw new ArgumentOutOfRangeException(nameof(orderProperties.IOC),"IOC not supported for LIMIT orders"),
+                    _ => dYdXOrder.Types.TimeInForce.Unspecified
+                },
+
+            OrderType.StopLimit  =>
+                orderProperties switch
+                {
+                    { PostOnly: true } => dYdXOrder.Types.TimeInForce.PostOnly,
+                    { IOC: true } => dYdXOrder.Types.TimeInForce.Ioc,
+                    _ => dYdXOrder.Types.TimeInForce.Unspecified
+                },
+
             _ => dYdXOrder.Types.TimeInForce.Unspecified
         };
     }
