@@ -39,7 +39,6 @@ public class Market
     private DateTime _lastMarketRefreshTime;
     private DateTime _lastBlockHeightUpdateTime;
     private bool _gtcWarningSent;
-    private bool _stopMarketIOCWarningSent;
 
     public const ulong DefaultGasLimit = 1_000_000;
     private const uint ShortBlockWindow = 20u;
@@ -320,13 +319,21 @@ public class Market
         return type switch
         {
             // MARKET orders: IOC if requested, otherwise Unspecified
-            OrderType.Market =>
+            OrderType.Market or OrderType.StopMarket  =>
                 orderProperties is { IOC: true }
                     ? dYdXOrder.Types.TimeInForce.Ioc
                     : dYdXOrder.Types.TimeInForce.Unspecified,
 
             // LIMIT orders: PostOnly if requested, otherwise Unspecified
-            OrderType.Limit or OrderType.StopLimit  =>
+            OrderType.Limit   =>
+                orderProperties switch
+                {
+                    { PostOnly: true } => dYdXOrder.Types.TimeInForce.PostOnly,
+                    { IOC: true } => throw new ArgumentOutOfRangeException(nameof(orderProperties.IOC),"IOC not supported for LIMIT orders"),
+                    _ => dYdXOrder.Types.TimeInForce.Unspecified
+                },
+
+            OrderType.StopLimit  =>
                 orderProperties switch
                 {
                     { PostOnly: true } => dYdXOrder.Types.TimeInForce.PostOnly,
@@ -334,23 +341,8 @@ public class Market
                     _ => dYdXOrder.Types.TimeInForce.Unspecified
                 },
 
-            // STOP_MARKET orders: IOC
-            OrderType.StopMarket => NotifyAndSwitchStopMarketTimeInForce(),
-
             _ => dYdXOrder.Types.TimeInForce.Unspecified
         };
-    }
-
-    private dYdXOrder.Types.TimeInForce NotifyAndSwitchStopMarketTimeInForce()
-    {
-        if (!_stopMarketIOCWarningSent)
-        {
-            OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1,
-                "Execution value TIME_IN_FORCE_UNSPECIFIED not supported for STOP_MARKET. Switched to IOC"));
-            _stopMarketIOCWarningSent = true;
-        }
-
-        return dYdXOrder.Types.TimeInForce.Ioc;
     }
 
     private static uint GetClientMetadata(OrderType type)
