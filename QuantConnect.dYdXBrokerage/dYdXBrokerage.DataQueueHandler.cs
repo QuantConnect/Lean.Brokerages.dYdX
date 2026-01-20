@@ -67,7 +67,6 @@ public partial class dYdXBrokerage
             job.BrokerageData.GetValueOrDefault("dydx-address"),
             job.BrokerageData.GetValueOrDefault("dydx-chain-id"),
             Convert.ToUInt32(job.BrokerageData.GetValueOrDefault("dydx-subaccount-number", "0")),
-            job.BrokerageData["dydx-node-api-rest"],
             job.BrokerageData["dydx-node-api-grpc"],
             job.BrokerageData["dydx-indexer-api-rest"],
             job.BrokerageData["dydx-indexer-api-wss"],

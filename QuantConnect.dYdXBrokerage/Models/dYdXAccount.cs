@@ -19,9 +19,7 @@ namespace QuantConnect.Brokerages.dYdX.Models;
 
 public class dYdXAccount
 {
-    [JsonProperty("account_number")]
-    public uint AccountNumber { get; set; }
-    public uint Sequence { get; set; }
-    [JsonProperty("pub_key")]
+    public ulong AccountNumber { get; set; }
+    public ulong Sequence { get; set; }
     public dYdXPublicKey PublicKey { get; set; }
 }

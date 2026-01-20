@@ -19,6 +19,7 @@ using QuantConnect.Brokerages;
 using QuantConnect.Configuration;
 using QuantConnect.Data;
 using QuantConnect.Interfaces;
+using QuantConnect.Logging;
 using QuantConnect.Packets;
 using QuantConnect.Securities;
 using QuantConnect.Util;
@@ -45,14 +46,12 @@ namespace QuantConnect.Brokerages.dYdX
 
             // mainnet
             // use KingNodes by default for the reason of better testings, and no rest endpoint for OEGS
-            { "dydx-node-api-rest", Config.Get("dydx-node-api-rest", "https://dydx-ops-rest.kingnodes.com:443") },
             { "dydx-node-api-grpc", Config.Get("dydx-node-api-grpc", "https://dydx-ops-grpc.kingnodes.com:443") },
             { "dydx-indexer-api-rest", Config.Get("dydx-indexer-api-rest", "https://indexer.dydx.trade/v4") },
             { "dydx-indexer-api-wss", Config.Get("dydx-indexer-api-wss", "wss://indexer.dydx.trade/v4/ws")},
             { "dydx-chain-id", Config.Get("dydx-chain-id", "dydx-mainnet-1") }
 
             // testnet
-            // { "dydx-node-api-rest", Config.Get("dydx-node-api-rest", "https://test-dydx-rest.kingnodes.com") },
             // { "dydx-node-api-grpc", Config.Get("dydx-node-api-grpc", "https://test-dydx-rest.kingnodes.com:443") },
             // { "dydx-indexer-api-rest", Config.Get("dydx-indexer-api-rest", "https://indexer.v4testnet.dydx.exchange/v4") },
             // {
@@ -83,11 +82,15 @@ namespace QuantConnect.Brokerages.dYdX
         /// <returns>A new brokerage instance</returns>
         public override IBrokerage CreateBrokerage(LiveNodePacket job, IAlgorithm algorithm)
         {
+            if (Config.TryGetValue("dydx-node-api-rest", out string _))
+            {
+                Log.Trace("Parameter 'dydx-node-api-rest' is not required for dYdX brokerage and can be safely removed from config.");
+            }
+
             var errors = new List<string>();
             var privateKey = Read<string>(job.BrokerageData, "dydx-private-key-hex", errors);
             var address = Read<string>(job.BrokerageData, "dydx-address", errors);
             var subaccountNumber = Read<uint>(job.BrokerageData, "dydx-subaccount-number", errors);
-            var nodeRestUrl = Read<string>(job.BrokerageData, "dydx-node-api-rest", errors);
             var nodeGrpcUrl = Read<string>(job.BrokerageData, "dydx-node-api-grpc", errors);
             var indexerRestUrl = Read<string>(job.BrokerageData, "dydx-indexer-api-rest", errors);
             var indexerWssUrl = Read<string>(job.BrokerageData, "dydx-indexer-api-wss", errors);
@@ -105,7 +108,6 @@ namespace QuantConnect.Brokerages.dYdX
                     address,
                     chainId,
                     subaccountNumber,
-                    nodeRestUrl,
                     nodeGrpcUrl,
                     indexerRestUrl,
                     indexerWssUrl,

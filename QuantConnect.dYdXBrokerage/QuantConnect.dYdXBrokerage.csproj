@@ -27,6 +27,8 @@
   </ItemGroup>
   <ItemGroup>
     <Protobuf Include="Protos\amino\amino.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\cosmos\auth\v1beta1\auth.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\cosmos\auth\v1beta1\query.proto" GrpcServices="Client" ProtoRoot="Protos\" />
     <Protobuf Include="Protos\cosmos\base\abci\v1beta1\abci.proto" GrpcServices="Client" ProtoRoot="Protos\" />
     <Protobuf Include="Protos\cosmos\base\query\v1beta1\pagination.proto" GrpcServices="Client" ProtoRoot="Protos\" />
     <Protobuf Include="Protos\cosmos\base\v1beta1\coin.proto" GrpcServices="Client" ProtoRoot="Protos\" />
@@ -34,6 +36,7 @@
     <Protobuf Include="Protos\cosmos\crypto\multisig\v1beta1\multisig.proto" GrpcServices="Client" ProtoRoot="Protos\" />
     <Protobuf Include="Protos\cosmos\crypto\secp256k1\keys.proto" GrpcServices="Client" ProtoRoot="Protos\" />
     <Protobuf Include="Protos\cosmos\msg\v1\msg.proto" GrpcServices="Client" ProtoRoot="Protos\" />
+    <Protobuf Include="Protos\cosmos\query\v1\query.proto" GrpcServices="Client" ProtoRoot="Protos\" />
     <Protobuf Include="Protos\cosmos\tx\signing\v1beta1\signing.proto" GrpcServices="Client" ProtoRoot="Protos\" />
     <Protobuf Include="Protos\cosmos\tx\v1beta1\service.proto" GrpcServices="Client" ProtoRoot="Protos\" />
     <Protobuf Include="Protos\cosmos\tx\v1beta1\tx.proto" GrpcServices="Client" ProtoRoot="Protos\" />

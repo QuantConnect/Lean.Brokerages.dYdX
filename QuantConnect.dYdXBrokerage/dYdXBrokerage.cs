@@ -118,7 +118,6 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
     /// <param name="address">The address associated with the mnemonic</param>
     /// <param name="chainId">Chain ID for the wallet</param>
     /// <param name="subaccountNumber">The subaccount number to use for this wallet</param>
-    /// <param name="nodeRestUrl">The REST URL of the node to connect to</param>
     /// <param name="nodeGrpcUrl">The gRPC URL of the node to connect to</param>
     /// <param name="indexerRestUrl">The REST URL of the indexer to connect to</param>
     /// <param name="indexerWssUrl">The WebSocket URL of the indexer to connect to</param>
@@ -127,7 +126,6 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
     /// <param name="aggregator">The aggregator instance</param>
     /// <param name="job">The live node packet</param>
     public dYdXBrokerage(string privateKey, string address, string chainId, uint subaccountNumber,
-        string nodeRestUrl,
         string nodeGrpcUrl,
         string indexerRestUrl,
         string indexerWssUrl,
@@ -141,7 +139,6 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
             address,
             chainId,
             subaccountNumber,
-            nodeRestUrl,
             nodeGrpcUrl,
             indexerRestUrl,
             indexerWssUrl,
@@ -155,7 +152,6 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
         string address,
         string chainId,
         uint subaccountNumber,
-        string nodeRestUrl,
         string nodeGrpcUrl,
         string indexerRestUrl,
         string indexerWssUrl,
@@ -229,7 +225,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
                 throw new Exception("Address is missing");
             }
 
-            _apiClient = GetApiClient(nodeRestUrl, nodeGrpcUrl, indexerRestUrl);
+            _apiClient = GetApiClient(nodeGrpcUrl, indexerRestUrl);
             _apiClient.Node.BrokerageMessage += OnMessage;
             try
             {
@@ -247,9 +243,9 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
         }
     }
 
-    private dYdXApiClient GetApiClient(string nodeRestUrl, string nodeGrpcUrl, string indexerUrl)
+    private dYdXApiClient GetApiClient(string nodeGrpcUrl, string indexerUrl)
     {
-        return new dYdXApiClient(nodeRestUrl, nodeGrpcUrl, indexerUrl);
+        return new dYdXApiClient(nodeGrpcUrl, indexerUrl);
     }
 
     private Wallet BuildWallet(dYdXApiClient apiClient,

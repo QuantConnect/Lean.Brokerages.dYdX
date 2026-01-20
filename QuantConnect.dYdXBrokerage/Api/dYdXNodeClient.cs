@@ -28,12 +28,16 @@ using QuantConnect.Brokerages.dYdX.Models;
 using QuantConnect.dYdXBrokerage.Cosmos.Base.Tendermint.V1Beta1;
 using QuantConnect.dYdXBrokerage.Cosmos.Tx;
 using QuantConnect.dYdXBrokerage.Cosmos.Tx.Signing;
+using QuantConnect.dYdXBrokerage.Cosmos.Auth;
 using QuantConnect.dYdXBrokerage.dYdXProtocol.AccountPlus;
 using QuantConnect.dYdXBrokerage.dYdXProtocol.Clob;
 using QuantConnect.Util;
 using Order = QuantConnect.dYdXBrokerage.dYdXProtocol.Clob.Order;
 using TendermintService = QuantConnect.dYdXBrokerage.Cosmos.Base.Tendermint.V1Beta1.Service;
 using TxService = QuantConnect.dYdXBrokerage.Cosmos.Tx.Service;
+using AccountPlusQuery = QuantConnect.dYdXBrokerage.dYdXProtocol.AccountPlus.Query;
+using AccountQuery = QuantConnect.dYdXBrokerage.Cosmos.Auth.Query;
+using BaseAccount = QuantConnect.dYdXBrokerage.Cosmos.Auth.BaseAccount;
 
 namespace QuantConnect.Brokerages.dYdX.Api;
 
@@ -42,19 +46,18 @@ public class dYdXNodeClient : IDisposable
     private const int ErrorWrongSequence = 32;
     private const int ErrorCodeUnauthorized = 104;
 
-    private readonly dYdXRestClient _restClient;
     private readonly GrpcChannel _grpcChannel;
     private readonly TxService.ServiceClient _txService;
     private readonly TendermintService.ServiceClient _tendermintService;
-    private readonly Query.QueryClient _accountPlusService;
+    private readonly AccountPlusQuery.QueryClient _accountPlusService;
     private readonly RateGate _rateGate;
+    private readonly AccountQuery.QueryClient _accountService;
 
     public event Action<BrokerageMessageEvent> BrokerageMessage;
 
-    public dYdXNodeClient(string restUrl, string grpcUrl)
+    public dYdXNodeClient(string grpcUrl)
     {
         _rateGate = new RateGate(250, TimeSpan.FromMinutes(1));
-        _restClient = new dYdXRestClient(restUrl.TrimEnd('/'), _rateGate);
 
         var grpcChannelOptions = new GrpcChannelOptions
         {
@@ -70,7 +73,8 @@ public class dYdXNodeClient : IDisposable
         _grpcChannel = GrpcChannel.ForAddress(uri, grpcChannelOptions);
         _txService = new TxService.ServiceClient(_grpcChannel);
         _tendermintService = new TendermintService.ServiceClient(_grpcChannel);
-        _accountPlusService = new Query.QueryClient(_grpcChannel);
+        _accountService = new AccountQuery.QueryClient(_grpcChannel);
+        _accountPlusService = new AccountPlusQuery.QueryClient(_grpcChannel);
     }
 
     public uint GetLatestBlockHeight()
@@ -81,8 +85,20 @@ public class dYdXNodeClient : IDisposable
 
     public dYdXAccount GetAccount(string address)
     {
-        var accountResponse = _restClient.Get<dYdXAccountResponse>($"cosmos/auth/v1beta1/accounts/{address}");
-        return accountResponse.Account;
+        _rateGate.WaitToProceed();
+        var account = _accountService.Account(new QueryAccountRequest { Address = address }).Account;
+        var accountProto = account.Unpack<BaseAccount>();
+
+        return new dYdXAccount
+        {
+            PublicKey = new dYdXPublicKey
+            {
+                Type = accountProto.PubKey.TypeUrl,
+                Key = accountProto.PubKey.Unpack<PubKey>().Key.ToBase64(),
+            } ,
+            AccountNumber = accountProto.AccountNumber,
+            Sequence = accountProto.Sequence
+        };
     }
 
     public IEnumerable<ulong> GetAuthenticators(string address)
@@ -300,6 +316,5 @@ public class dYdXNodeClient : IDisposable
     public void Dispose()
     {
         _grpcChannel.DisposeSafely();
-        _restClient.DisposeSafely();
     }
 }

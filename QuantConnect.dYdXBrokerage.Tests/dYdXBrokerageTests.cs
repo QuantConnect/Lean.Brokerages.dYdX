@@ -44,7 +44,6 @@ namespace QuantConnect.Brokerages.dYdX.Tests
             var privateKey = Config.Get("dydx-private-key-hex");
             var address = Config.Get("dydx-address");
             var subaccountNumber = checked((uint)Config.GetInt("dydx-subaccount-number"));
-            var nodeUrlRest = Config.Get("dydx-node-api-rest", "https://test-dydx-rest.kingnodes.com");
             var nodeUrlGrpc = Config.Get("dydx-node-api-grpc", "https://test-dydx-grpc.kingnodes.com:443");
             var indexerUrlRest = Config.Get("dydx-indexer-api-rest", "https://indexer.v4testnet.dydx.exchange/v4");
             var indexerUrlWss = Config.Get("dydx-indexer-api-wss", "wss://indexer.v4testnet.dydx.exchange/v4/ws");
@@ -70,7 +69,6 @@ namespace QuantConnect.Brokerages.dYdX.Tests
                 address,
                 chainId,
                 subaccountNumber,
-                nodeUrlRest,
                 nodeUrlGrpc,
                 indexerUrlRest,
                 indexerUrlWss,
