@@ -39,6 +39,7 @@ namespace QuantConnect.Brokerages.dYdX.Api;
 
 public class dYdXNodeClient : IDisposable
 {
+    private const int ErrorWrongSequence = 32;
     private const int ErrorCodeUnauthorized = 104;
 
     private readonly dYdXRestClient _restClient;
@@ -47,6 +48,8 @@ public class dYdXNodeClient : IDisposable
     private readonly TendermintService.ServiceClient _tendermintService;
     private readonly Query.QueryClient _accountPlusService;
     private readonly RateGate _rateGate;
+
+    public event Action<BrokerageMessageEvent> BrokerageMessage;
 
     public dYdXNodeClient(string restUrl, string grpcUrl)
     {
@@ -131,7 +134,8 @@ public class dYdXNodeClient : IDisposable
         Wallet wallet,
         uint orderFlags,
         ulong gasLimit,
-        Action<TxBody> bodyBuilder)
+        Action<TxBody> bodyBuilder
+    )
     {
         while (true)
         {
@@ -147,20 +151,32 @@ public class dYdXNodeClient : IDisposable
 
             bodyBuilder(txBody);
             var response = BroadcastTransaction(wallet, txBody, gasLimit);
-            if (response.TxResponse.Code != ErrorCodeUnauthorized)
+            if (response.TxResponse.Code == ErrorCodeUnauthorized)
             {
-                if (response.TxResponse.Code == 0 && orderFlags != (uint) OrderFlags.ShortTerm)
-                {
-                    wallet.IncrementSequence();
-                }
-
-                wallet.AuthenticatorId = authenticatorId;
-
-                return response;
+                // invalidate the authenticator ID as we received unauthorized error code and retry the transaction
+                wallet.AuthenticatorId = null;
+                continue;
             }
 
-            // invalidate the authenticator ID as we received unauthorized error code and retry the transaction
-            wallet.AuthenticatorId = null;
+            // Cache the authenticator ID for future transactions as we didn't get the unauthorized error code
+            wallet.AuthenticatorId = authenticatorId;
+
+            if (response.TxResponse.Code == ErrorWrongSequence)
+            {
+                OnMessage(new BrokerageMessageEvent(
+                    BrokerageMessageType.Warning,
+                    -1,
+                    "Transaction sequence error, refreshing sequence"));
+                wallet.RefreshSequence(this);
+                continue;
+            }
+
+            if (response.TxResponse.Code == 0 && orderFlags != (uint)OrderFlags.ShortTerm)
+            {
+                wallet.IncrementSequence();
+            }
+
+            return response;
         }
     }
 
@@ -276,8 +292,14 @@ public class dYdXNodeClient : IDisposable
         return authInfo;
     }
 
+    private void OnMessage(BrokerageMessageEvent brokerageMessageEvent)
+    {
+        BrokerageMessage?.Invoke(brokerageMessageEvent);
+    }
+
     public void Dispose()
     {
         _grpcChannel.DisposeSafely();
+        _restClient.DisposeSafely();
     }
 }

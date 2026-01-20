@@ -164,6 +164,11 @@ public class Wallet
         return Sequence;
     }
 
+    public void RefreshSequence(dYdXNodeClient client)
+    {
+        var account = client.GetAccount(Address);
+        Sequence = account.Sequence;
+    }
 
     public class Builder
     {

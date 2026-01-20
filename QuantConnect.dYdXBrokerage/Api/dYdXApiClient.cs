@@ -14,8 +14,6 @@
  */
 
 using System;
-using System.Collections.Generic;
-using QuantConnect.Brokerages.dYdX.Domain;
 using QuantConnect.Util;
 
 namespace QuantConnect.Brokerages.dYdX.Api;
@@ -27,6 +25,7 @@ public class dYdXApiClient(string nodeEndpointRest, string nodeEndpointGrpc, str
 
     public void Dispose()
     {
+        Indexer?.DisposeSafely();
         Node?.DisposeSafely();
     }
 }

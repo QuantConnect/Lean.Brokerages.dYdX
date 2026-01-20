@@ -17,10 +17,11 @@ using System;
 using System.Collections.Generic;
 using QuantConnect.Brokerages.dYdX.Domain;
 using QuantConnect.Brokerages.dYdX.Models;
+using QuantConnect.Util;
 
 namespace QuantConnect.Brokerages.dYdX.Api;
 
-public class dYdXIndexerClient(string baseUrl)
+public class dYdXIndexerClient(string baseUrl): IDisposable
 {
     private readonly dYdXRestClient _restClient = new(baseUrl, new(100, TimeSpan.FromSeconds(10)));
 
@@ -69,5 +70,10 @@ public class dYdXIndexerClient(string baseUrl)
         return _restClient.Get<SubaccountResponse>(
                 $"addresses/{wallet.Address}/subaccountNumber/{wallet.SubaccountNumber}")
             .Subaccount;
+    }
+
+    public void Dispose()
+    {
+        _restClient.DisposeSafely();
     }
 }

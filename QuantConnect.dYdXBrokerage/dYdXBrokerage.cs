@@ -230,6 +230,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
             }
 
             _apiClient = GetApiClient(nodeRestUrl, nodeGrpcUrl, indexerRestUrl);
+            _apiClient.Node.BrokerageMessage += OnMessage;
             try
             {
                 Wallet = BuildWallet(_apiClient, privateKeyHex, address, chainId, subaccountNumber);
