@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using QuantConnect.Brokerages.dYdX.Exceptions;
 using QuantConnect.Brokerages.dYdX.Extensions;
 using QuantConnect.Brokerages.dYdX.Models;
 using QuantConnect.Logging;
@@ -155,7 +156,8 @@ public partial class dYdXBrokerage
                 else
                 {
                     var message =
-                        $"Order failed, Order Id: {order.Id} timestamp: {order.Time} quantity: {order.Quantity} content: {result.Message}";
+                        $"Order failed, Order Id: {order.Id} timestamp: {order.Time} quantity: {order.Quantity
+                        } content: {result.Message}";
                     OnOrderEvent(new OrderEvent(
                             order,
                             DateTime.UtcNow,
@@ -164,6 +166,13 @@ public partial class dYdXBrokerage
                         { Status = OrderStatus.Invalid });
                     OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1, message));
                 }
+            }
+            catch (AuthenticatorKeyMismatchException ex)
+            {
+                OnMessage(new BrokerageMessageEvent(
+                    BrokerageMessageType.Error,
+                    -1,
+                    $"{nameof(dYdXBrokerage)}.{nameof(PlaceOrder)}(): {ex.Message}"));
             }
             catch (Exception ex)
             {
@@ -233,6 +242,15 @@ public partial class dYdXBrokerage
                 var gasLimit = (order.Properties as dYdXOrderProperties)?.GasLimit ?? Domain.Market.DefaultGasLimit;
                 result = _apiClient.Node.CancelOrder(Wallet, dydxOrder, gasLimit);
             }
+            catch (AuthenticatorKeyMismatchException ex)
+            {
+                OnMessage(new BrokerageMessageEvent(
+                    BrokerageMessageType.Error,
+                    -1,
+                    $"{nameof(dYdXBrokerage)}.{nameof(CancelOrder)}(): {ex.Message}"));
+                submitted = false;
+                return;
+            }
             catch (Exception ex)
             {
                 OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1, ex.Message));
@@ -243,7 +261,8 @@ public partial class dYdXBrokerage
             if (result.Code != 0)
             {
                 var message =
-                    $"Cancel order failed, Order Id: {order.Id} timestamp: {order.Time} quantity: {order.Quantity} content: {result.Message}";
+                    $"Cancel order failed, Order Id: {order.Id} timestamp: {order.Time} quantity: {order.Quantity
+                    } content: {result.Message}";
                 OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1, message));
                 submitted = false;
             }

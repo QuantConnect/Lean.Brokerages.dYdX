@@ -23,6 +23,7 @@ using Google.Protobuf.WellKnownTypes;
 using Grpc.Net.Client;
 using QuantConnect.Brokerages.dYdX.Domain;
 using QuantConnect.Brokerages.dYdX.Domain.Enums;
+using QuantConnect.Brokerages.dYdX.Exceptions;
 using QuantConnect.Brokerages.dYdX.Models;
 using QuantConnect.dYdXBrokerage.Cosmos.Base.Tendermint.V1Beta1;
 using QuantConnect.dYdXBrokerage.Cosmos.Tx;
@@ -139,7 +140,7 @@ public class dYdXNodeClient : IDisposable
             // to wallet private keys or mnemonic phrases for transaction signing.
             if (!wallet.TryGetAuthenticatorId(out var authenticatorId))
             {
-                throw new InvalidOperationException("No authenticators found for the provided address");
+                throw new AuthenticatorKeyMismatchException();
             }
 
             var txBody = CreateTxBody(authenticatorId);

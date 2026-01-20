@@ -22,6 +22,7 @@ using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Crypto.Signers;
 using Org.BouncyCastle.Math;
 using QuantConnect.Brokerages.dYdX.Api;
+using QuantConnect.Brokerages.dYdX.Exceptions;
 using QuantConnect.Util;
 
 namespace QuantConnect.Brokerages.dYdX.Domain;
@@ -304,7 +305,7 @@ public class Wallet
 
                 if (authenticators is { Count: 0 or > MaxAuthenticatorsQueueSize })
                 {
-                    throw new InvalidOperationException("No authenticators found for address");
+                    throw new AuthenticatorNotFoundException();
                 }
 
                 privateKeyHex = _authenticatorPrivateKey;
