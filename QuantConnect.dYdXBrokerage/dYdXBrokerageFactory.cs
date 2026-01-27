@@ -45,8 +45,7 @@ namespace QuantConnect.Brokerages.dYdX
             { "dydx-subaccount-number", Config.Get("dydx-subaccount-number", "0") },
 
             // mainnet
-            // use KingNodes by default for the reason of better testings, and no rest endpoint for OEGS
-            { "dydx-node-api-grpc", Config.Get("dydx-node-api-grpc", "https://dydx-ops-grpc.kingnodes.com:443") },
+            { "dydx-node-api-grpc", Config.Get("dydx-node-api-grpc", "grpc://oegs.dydx.trade:443") },
             { "dydx-indexer-api-rest", Config.Get("dydx-indexer-api-rest", "https://indexer.dydx.trade/v4") },
             { "dydx-indexer-api-wss", Config.Get("dydx-indexer-api-wss", "wss://indexer.dydx.trade/v4/ws")},
             { "dydx-chain-id", Config.Get("dydx-chain-id", "dydx-mainnet-1") }

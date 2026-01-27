@@ -43,6 +43,7 @@ namespace QuantConnect.Brokerages.dYdX.Api;
 
 public class dYdXNodeClient : IDisposable
 {
+    private const int MaxRetries = 5;
     private const int ErrorWrongSequence = 32;
     private const int ErrorCodeUnauthorized = 104;
 
@@ -69,7 +70,8 @@ public class dYdXNodeClient : IDisposable
             }
         };
 
-        var uri = new Uri(grpcUrl.TrimEnd('/'));
+        // replace grpc:// with https:// to allow using standard DNS resolver
+        var uri = new Uri(grpcUrl.TrimEnd('/').Replace("grpc://", "https://"));
         _grpcChannel = GrpcChannel.ForAddress(uri, grpcChannelOptions);
         _txService = new TxService.ServiceClient(_grpcChannel);
         _tendermintService = new TendermintService.ServiceClient(_grpcChannel);
@@ -95,7 +97,7 @@ public class dYdXNodeClient : IDisposable
             {
                 Type = accountProto.PubKey.TypeUrl,
                 Key = accountProto.PubKey.Unpack<PubKey>().Key.ToBase64(),
-            } ,
+            },
             AccountNumber = accountProto.AccountNumber,
             Sequence = accountProto.Sequence
         };
@@ -153,8 +155,16 @@ public class dYdXNodeClient : IDisposable
         Action<TxBody> bodyBuilder
     )
     {
+        var retries = MaxRetries;
         while (true)
         {
+            if (retries == 0)
+            {
+                throw new InvalidOperationException($"Failed to execute transaction after {MaxRetries} retries");
+            }
+
+            retries--;
+
             // Explicitly use the Authenticator-based authentication method.
             // This ensures we rely on the authenticator ID rather than falling back
             // to wallet private keys or mnemonic phrases for transaction signing.

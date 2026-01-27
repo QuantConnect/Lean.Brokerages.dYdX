@@ -19,5 +19,6 @@ public enum OrderFlags : uint
 {
     ShortTerm = 0u,
     Conditional = 32u,
-    LongTerm = 64u
+    LongTerm = 64u,
+    Twap = 128u,
 }
