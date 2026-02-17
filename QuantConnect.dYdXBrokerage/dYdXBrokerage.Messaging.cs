@@ -361,8 +361,8 @@ public partial class dYdXBrokerage
                 var fill = orderFills[i];
                 var fillPrice = fill.Price;
                 var fillQuantity = fill.Side == OrderDirection.Sell
-                    ? -fill.QuoteAmount
-                    : fill.QuoteAmount;
+                    ? -fill.Size
+                    : fill.Size;
                 var updTime = Time.ParseDate(fill.CreatedAt);
                 var orderFee = OrderFee.Zero;
                 if (fill.Fee is > 0)

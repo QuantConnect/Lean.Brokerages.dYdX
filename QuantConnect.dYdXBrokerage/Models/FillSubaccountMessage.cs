@@ -21,6 +21,7 @@ public class FillSubaccountMessage
 {
     public string OrderId { get; set; }
     public OrderDirection Side { get; set; }
+    public decimal Size { get; set; }
     public decimal QuoteAmount { get; set; }
     public decimal Price { get; set; }
     public string CreatedAt { get; set; }
