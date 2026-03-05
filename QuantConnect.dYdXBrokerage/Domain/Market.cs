@@ -298,6 +298,11 @@ public class Market
             case StopLimitOrder stopLimitOrder:
                 dydxOrder.Subticks = CalculateSubticks(stopLimitOrder.LimitPrice, symbolProperties, marketInfo);
                 break;
+
+            default:
+                // For other order types (e.g., StopMarket), use price = 0 to calculate subticks at minimum value
+                dydxOrder.Subticks = CalculateSubticks(0, symbolProperties, marketInfo);
+                break;
         }
     }
 

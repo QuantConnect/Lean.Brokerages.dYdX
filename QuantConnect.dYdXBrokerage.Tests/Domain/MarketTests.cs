@@ -14,7 +14,6 @@
  */
 
 using System;
-using System.Collections.Generic;
 using NUnit.Framework;
 using QuantConnect.Brokerages.dYdX.Api;
 using QuantConnect.Brokerages.dYdX.Domain;
@@ -118,6 +117,28 @@ public class MarketTests
         var result = _market.CreateOrder(order, clientId: 42);
 
         Assert.AreEqual(2_500_000_000, result.Subticks);
+        Assert.AreEqual(2_400_000_000, result.ConditionalOrderTriggerSubticks);
+    }
+
+    [Test]
+    public void CreateOrder_LongTermStopMarketOrder_UsesLimitPriceForSubticks()
+    {
+        var symbol = Symbol.Create("ETHUSD", SecurityType.CryptoFuture, QuantConnect.Market.DYDX);
+        var stopPrice = 2400m;
+
+        var order = new StopMarketOrder(
+            symbol,
+            quantity: 0.1m,
+            stopPrice,
+            DateTime.UtcNow,
+            properties: new dYdXOrderProperties
+            {
+                TimeInForce = new GoodTilDateTimeInForce(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc))
+            });
+
+        var result = _market.CreateOrder(order, clientId: 42);
+
+        Assert.AreEqual(1_000, result.Subticks);
         Assert.AreEqual(2_400_000_000, result.ConditionalOrderTriggerSubticks);
     }
 }
