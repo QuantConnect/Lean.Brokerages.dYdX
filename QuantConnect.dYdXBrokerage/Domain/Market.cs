@@ -288,7 +288,17 @@ public class Market
         };
 
         dydxOrder.GoodTilBlockTime = Convert.ToUInt32(Time.DateTimeToUnixTimeStamp(expiry));
-        dydxOrder.Subticks = CalculateSubticks(order.Price, symbolProperties, marketInfo);
+
+        switch (order)
+        {
+            case LimitOrder limitOrder:
+                dydxOrder.Subticks = CalculateSubticks(limitOrder.LimitPrice, symbolProperties, marketInfo);
+                break;
+
+            case StopLimitOrder stopLimitOrder:
+                dydxOrder.Subticks = CalculateSubticks(stopLimitOrder.LimitPrice, symbolProperties, marketInfo);
+                break;
+        }
     }
 
     private void OnMessage(BrokerageMessageEvent brokerageMessageEvent)
