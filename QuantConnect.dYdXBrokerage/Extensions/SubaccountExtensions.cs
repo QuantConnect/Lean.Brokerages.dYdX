@@ -48,7 +48,10 @@ public static class SubaccountExtensions
 
             foreach (var (asset, assetPosition) in source.AssetPositions)
             {
-                balances.Add(asset, new CashAmount(assetPosition.Size, asset));
+                var assetQuantity = assetPosition.Side == Models.Enums.PositionSide.Long
+                    ? assetPosition.Size
+                    : -assetPosition.Size;
+                balances.Add(asset, new CashAmount(assetQuantity, asset));
             }
 
             if (accountType == AccountType.Margin)

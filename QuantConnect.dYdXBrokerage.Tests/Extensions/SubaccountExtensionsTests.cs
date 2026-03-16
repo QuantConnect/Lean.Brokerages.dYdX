@@ -165,6 +165,48 @@ public class SubaccountExtensionsTests
         AssertTokenValue(cashAmounts, "USDC", 100m);
     }
 
+    [Test]
+    public void GetCashAmounts_WithLongAssetPosition_ReturnsPositiveValue()
+    {
+        // Arrange
+        var subaccount = new Subaccount
+        {
+            AssetPositions = new Dictionary<string, AssetPosition>
+            {
+                { "USDC", new AssetPosition { Size = 100m, Symbol = "USDC", Side = Models.Enums.PositionSide.Long } }
+            },
+            OpenPerpetualPositions = new Dictionary<string, PerpetualPosition>()
+        };
+
+        // Act
+        var cashAmounts = subaccount.GetCashAmounts(_symbolPropertiesDatabase, AccountType.Margin);
+
+        // Assert
+        Assert.AreEqual(1, cashAmounts.Count);
+        AssertTokenValue(cashAmounts, "USDC", 100m);
+    }
+
+    [Test]
+    public void GetCashAmounts_WithShortAssetPosition_ReturnsNegativeValue()
+    {
+        // Arrange
+        var subaccount = new Subaccount
+        {
+            AssetPositions = new Dictionary<string, AssetPosition>
+            {
+                { "USDC", new AssetPosition { Size = 100m, Symbol = "USDC", Side = Models.Enums.PositionSide.Short } }
+            },
+            OpenPerpetualPositions = new Dictionary<string, PerpetualPosition>()
+        };
+
+        // Act
+        var cashAmounts = subaccount.GetCashAmounts(_symbolPropertiesDatabase, AccountType.Margin);
+
+        // Assert
+        Assert.AreEqual(1, cashAmounts.Count);
+        AssertTokenValue(cashAmounts, "USDC", -100m);
+    }
+
     private static void AssertTokenValue(List<CashAmount> cashAmounts, string currency, decimal expectedValue = 0)
     {
         var amount = cashAmounts.Find(c => c.Currency == currency);

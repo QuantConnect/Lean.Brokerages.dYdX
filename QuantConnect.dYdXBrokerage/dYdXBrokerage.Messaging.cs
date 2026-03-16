@@ -100,7 +100,7 @@ public partial class dYdXBrokerage
         {
             if (Log.DebuggingEnabled)
             {
-                Log.Debug($"{nameof(dYdXBrokerage)}.{nameof(OnUserMessage)}(): {e.Message}");
+                Log.Debug($"{nameof(dYdXBrokerage)}.{nameof(OnDataMessage)}(): {e.Message}");
             }
 
             var jObj = JObject.Parse(e.Message);
