@@ -40,8 +40,8 @@ public class SubaccountExtensionsTests
         {
             AssetPositions = new Dictionary<string, AssetPosition>
             {
-                { "USDC", new AssetPosition { Size = 100m, Symbol = "USDC" } },
-                { "DYDX", new AssetPosition { Size = 10_000m, Symbol = "DYDX" } },
+                { "USDC", new AssetPosition { Size = 100m, Symbol = "USDC", Side = Models.Enums.PositionSide.Long } },
+                { "DYDX", new AssetPosition { Size = 10_000m, Symbol = "DYDX", Side = Models.Enums.PositionSide.Long } },
             },
             OpenPerpetualPositions = new Dictionary<string, PerpetualPosition>()
         };
@@ -63,7 +63,7 @@ public class SubaccountExtensionsTests
         {
             AssetPositions = new Dictionary<string, AssetPosition>
             {
-                { "USDC", new AssetPosition { Size = 100m, Symbol = "USDC" } }
+                { "USDC", new AssetPosition { Size = 100m, Symbol = "USDC", Side = Models.Enums.PositionSide.Long } }
             },
             OpenPerpetualPositions = new Dictionary<string, PerpetualPosition>
             {
@@ -97,7 +97,7 @@ public class SubaccountExtensionsTests
         {
             AssetPositions = new Dictionary<string, AssetPosition>
             {
-                { "USDC", new AssetPosition { Size = 100m, Symbol = "USDC" } }
+                { "USDC", new AssetPosition { Size = 100m, Symbol = "USDC", Side = Models.Enums.PositionSide.Long } }
             },
             OpenPerpetualPositions = new Dictionary<string, PerpetualPosition>
             {
@@ -142,7 +142,7 @@ public class SubaccountExtensionsTests
         {
             AssetPositions = new Dictionary<string, AssetPosition>
             {
-                { "USDC", new AssetPosition { Size = 100m, Symbol = "USDC" } }
+                { "USDC", new AssetPosition { Size = 100m, Symbol = "USDC", Side = Models.Enums.PositionSide.Long } }
             },
             OpenPerpetualPositions = new Dictionary<string, PerpetualPosition>
             {
