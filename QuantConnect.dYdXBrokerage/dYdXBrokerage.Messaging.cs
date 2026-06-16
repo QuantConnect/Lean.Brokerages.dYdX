@@ -280,6 +280,15 @@ public partial class dYdXBrokerage
                 case "OPEN":
                 case "BEST_EFFORT_OPENED":
                     TryHandleOpen(dydxOrder);
+                    // dYdX v4 has no PARTIALLY_FILLED order status: intermediate partial fills
+                    // are reported through the Fills array while the order is still OPEN.
+                    // Process them here so the fills are not dropped, otherwise LEAN holdings/cash
+                    // drift from the broker state until the order eventually reaches FILLED.
+                    if (contents.Fills?.Any(x => x.OrderId == dydxOrder.Id) == true)
+                    {
+                        HandleFills(dydxOrder, contents);
+                    }
+
                     break;
 
                 case "CANCELED":
@@ -288,6 +297,14 @@ public partial class dYdXBrokerage
                         _orderProvider.GetOrdersByBrokerageId(dydxOrder.Id)?.SingleOrDefault();
                     if (leanCancelOrder != null)
                     {
+                        // dYdX can report a final partial fill in the same message that cancels the remainder.
+                        // Emit those fills (as PartiallyFilled) before the cancellation,
+                        // otherwise they are dropped the same way OPEN-status fills were.
+                        if (contents.Fills?.Any(x => x.OrderId == dydxOrder.Id) == true)
+                        {
+                            HandleFills(dydxOrder, contents);
+                        }
+
                         OnOrderEvent(new OrderEvent(leanCancelOrder, DateTime.UtcNow, OrderFee.Zero, "dYdX Order Event")
                         {
                             Status = OrderStatus.Canceled
@@ -351,7 +368,7 @@ public partial class dYdXBrokerage
                 .Where(x => x.OrderId == dydxOrder.Id)
                 .ToList();
 
-            if (orderFills == null)
+            if (orderFills == null || orderFills.Count == 0)
             {
                 throw new Exception($"No fills found for order {leanOrder.Id} (brokerage id: {dydxOrder.Id})");
             }
@@ -373,10 +390,14 @@ public partial class dYdXBrokerage
                     orderFee = new OrderFee(new CashAmount(fill.Fee.Value, leanOrder.PriceCurrency));
                 }
 
-                // no current order status
-                // TODO: check if we can get partially filled order status at all
-                // their API does not contain it https://docs.dydx.xyz/types/order_status#orderstatus
-                var status = i == orderFills.Count - 1 ? finalOrderStatus : OrderStatus.PartiallyFilled;
+                // dYdX has no PARTIALLY_FILLED order status (https://docs.dydx.xyz/types/order_status#orderstatus).
+                // A fill only completes the order when the order itself reached FILLED status and it is the last
+                // fill in the message; every other fill (including all fills that arrive while the order is still
+                // OPEN) is a partial fill.
+                var isLastFill = i == orderFills.Count - 1;
+                var status = isLastFill && finalOrderStatus == OrderStatus.Filled
+                    ? OrderStatus.Filled
+                    : OrderStatus.PartiallyFilled;
                 var orderEvent = new OrderEvent
                 (
                     leanOrder.Id, leanOrder.Symbol, updTime, status,
