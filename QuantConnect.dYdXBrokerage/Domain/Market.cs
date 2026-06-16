@@ -299,10 +299,16 @@ public class Market
                 dydxOrder.Subticks = CalculateSubticks(stopLimitOrder.LimitPrice, symbolProperties, marketInfo);
                 break;
 
-            default:
-                // For other order types (e.g., StopMarket), use price = 0 to calculate subticks at minimum value
-                dydxOrder.Subticks = CalculateSubticks(0, symbolProperties, marketInfo);
+            case StopMarketOrder stopMarketOrder:
+                // The triggered order's Subticks act as its limit price, so it must be marketable: the minimum
+                // (price = 0) fills a sell but leaves a buy resting below the ask, so price the buy above the stop.
+                dydxOrder.Subticks = stopMarketOrder.Direction == OrderDirection.Buy
+                    ? CalculateSubticks(stopMarketOrder.StopPrice * (1 + MarketPriceBuffer), symbolProperties, marketInfo)
+                    : CalculateSubticks(0, symbolProperties, marketInfo);
                 break;
+
+            default:
+                throw new NotSupportedException($"{nameof(ConfigureLongTermOrder)}: unsupported order type '{order.Type}'.");
         }
     }
 
