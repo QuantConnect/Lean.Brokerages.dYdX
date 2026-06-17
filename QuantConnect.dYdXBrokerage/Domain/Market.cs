@@ -42,7 +42,7 @@ public class Market
 
     public const ulong DefaultGasLimit = 1_000_000;
     private const uint ShortBlockWindow = 20u;
-    private const decimal MarketPriceBuffer = 0.05m; //5% buffer
+    private const decimal MarketPriceBuffer = 0.30m; //30% buffer
 
     public event Action<BrokerageMessageEvent> BrokerageMessage;
 
@@ -224,7 +224,7 @@ public class Market
 
         if (orderFlag == OrderFlags.ShortTerm)
         {
-            ConfigureShortTermOrder(dydxOrder, orderProperties, marketInfo, symbolProperties, side);
+            ConfigureShortTermOrder(dydxOrder, orderProperties, marketInfo, symbolProperties, order.Direction);
         }
         else
         {
@@ -252,17 +252,10 @@ public class Market
 
     private void ConfigureShortTermOrder(dYdXOrder dydxOrder, dYdXOrderProperties orderProperties,
         Models.Symbol marketInfo,
-        SymbolProperties symbolProperties, QuantConnect.dYdXBrokerage.dYdXProtocol.Clob.Order.Types.Side side)
+        SymbolProperties symbolProperties, OrderDirection direction)
     {
-        // Find the market configuration to get the current Oracle Price
-        var oraclePrice = marketInfo.OraclePrice;
-
-        // Calculate limit price: +5% for BUY, -5% for SELL to ensure fill
-        var targetPrice = side == QuantConnect.dYdXBrokerage.dYdXProtocol.Clob.Order.Types.Side.Buy
-            ? oraclePrice * (1 + MarketPriceBuffer)
-            : oraclePrice * (1 - MarketPriceBuffer);
-
-        dydxOrder.Subticks = CalculateSubticks(targetPrice, symbolProperties, marketInfo);
+        // Market orders have no protocol-level price; derive a marketable limit from the current oracle price.
+        dydxOrder.Subticks = CalculateMarketableSubticks(marketInfo.OraclePrice, direction, symbolProperties, marketInfo);
         dydxOrder.GoodTilBlock = GetBlockHeight() + (orderProperties?.GoodTilBlockOffset ?? ShortBlockWindow);
     }
 
@@ -299,10 +292,16 @@ public class Market
                 dydxOrder.Subticks = CalculateSubticks(stopLimitOrder.LimitPrice, symbolProperties, marketInfo);
                 break;
 
-            default:
-                // For other order types (e.g., StopMarket), use price = 0 to calculate subticks at minimum value
-                dydxOrder.Subticks = CalculateSubticks(0, symbolProperties, marketInfo);
+            case StopMarketOrder stopMarketOrder:
+                // Subticks act as the triggered order's limit price, so it must be marketable. Reuse the same
+                // pricing as a market order (anchored on the stop) so a triggered buy crosses the asks and a
+                // sell crosses the bids.
+                dydxOrder.Subticks = CalculateMarketableSubticks(stopMarketOrder.StopPrice, stopMarketOrder.Direction,
+                    symbolProperties, marketInfo);
                 break;
+
+            default:
+                throw new NotSupportedException($"{nameof(ConfigureLongTermOrder)}: unsupported order type '{order.Type}'.");
         }
     }
 
@@ -324,6 +323,18 @@ public class Market
         var subticks = Convert.ToUInt64(price * symbolProperties.PriceMagnifier);
         subticks = (subticks / marketInfo.SubticksPerTick) * marketInfo.SubticksPerTick;
         return Math.Max(subticks, marketInfo.SubticksPerTick);
+    }
+
+    private static ulong CalculateMarketableSubticks(decimal referencePrice, OrderDirection direction,
+        SymbolProperties symbolProperties, Models.Symbol marketInfo)
+    {
+        // Pad the reference price so the order is immediately marketable: above the market for a buy
+        // (crosses the asks), below for a sell (crosses the bids). The buffer caps worst-case slippage.
+        var targetPrice = direction == OrderDirection.Buy
+            ? referencePrice * (1 + MarketPriceBuffer)
+            : referencePrice * (1 - MarketPriceBuffer);
+
+        return CalculateSubticks(targetPrice, symbolProperties, marketInfo);
     }
 
     private dYdXOrder.Types.TimeInForce GetTimeInForce(OrderType type, dYdXOrderProperties orderProperties = null)
