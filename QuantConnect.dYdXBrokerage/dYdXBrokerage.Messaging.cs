@@ -312,7 +312,7 @@ public partial class dYdXBrokerage
                         }
 
                         OnOrderEvent(new OrderEvent(leanCancelOrder, DateTime.UtcNow, OrderFee.Zero,
-                            $"dYdX Order Event (order id: {dydxOrder.Id})")
+                            $"dYdX Order Event (cancel id: {dydxOrder.Id})")
                         {
                             Status = OrderStatus.Canceled
                         });
