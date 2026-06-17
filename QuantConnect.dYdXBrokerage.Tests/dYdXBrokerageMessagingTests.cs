@@ -263,5 +263,41 @@ namespace QuantConnect.Brokerages.dYdX.Tests
             Assert.AreEqual(OrderStatus.PartiallyFilled, _orderEvents[0].Status);
             Assert.AreEqual(OrderStatus.Filled, _orderEvents[1].Status);
         }
+
+        [Test]
+        public void DoesNotEmitTheSameFillTwice()
+        {
+            const string fillId = "8f3b6a1c-0e2d-4c5b-9a8f-1b2c3d4e5f60";
+
+            // the same fill reported on two separate messages must only produce one OrderEvent,
+            // otherwise holdings/cash are double counted
+            for (var i = 0; i < 2; i++)
+            {
+                DispatchSubaccountUpdate($$"""
+                {
+                    "orders": [{
+                        "id": "{{BrokerId}}",
+                        "clientId": "287469",
+                        "side": "BUY",
+                        "status": "OPEN",
+                        "totalFilled": "0.001"
+                    }],
+                    "fills": [{
+                        "id": "{{fillId}}",
+                        "orderId": "{{BrokerId}}",
+                        "side": "BUY",
+                        "size": "0.001",
+                        "price": "64000",
+                        "ticker": "BTC-USD",
+                        "createdAt": "2026-06-14T19:00:00.000Z"
+                    }]
+                }
+                """);
+            }
+
+            Assert.AreEqual(1, _orderEvents.Count);
+            Assert.AreEqual(OrderStatus.PartiallyFilled, _orderEvents[0].Status);
+            Assert.AreEqual(0.001m, _orderEvents[0].FillQuantity);
+        }
     }
 }
