@@ -42,7 +42,7 @@ public class Market
 
     public const ulong DefaultGasLimit = 1_000_000;
     private const uint ShortBlockWindow = 20u;
-    private const decimal MarketableBuyPriceMultiplier = 10m; // price buys 10x above the reference so they cross any ask
+    private const decimal MarketPriceBuffer = 0.30m; //30% buffer
 
     public event Action<BrokerageMessageEvent> BrokerageMessage;
 
@@ -328,12 +328,11 @@ public class Market
     private static ulong CalculateMarketableSubticks(decimal referencePrice, OrderDirection direction,
         SymbolProperties symbolProperties, Models.Symbol marketInfo)
     {
-        // Market/triggered orders must fill, so they intentionally forgo any slippage cap (use a limit order
-        // for price control). Price a sell at the minimum (0 -> crosses any bid) and a buy far above the
-        // reference (crosses any ask).
+        // Pad the reference price so the order is immediately marketable: above the market for a buy
+        // (crosses the asks), below for a sell (crosses the bids). The buffer caps worst-case slippage.
         var targetPrice = direction == OrderDirection.Buy
-            ? referencePrice * MarketableBuyPriceMultiplier
-            : 0m;
+            ? referencePrice * (1 + MarketPriceBuffer)
+            : referencePrice * (1 - MarketPriceBuffer);
 
         return CalculateSubticks(targetPrice, symbolProperties, marketInfo);
     }
