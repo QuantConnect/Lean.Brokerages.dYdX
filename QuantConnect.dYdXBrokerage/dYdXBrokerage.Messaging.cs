@@ -311,7 +311,8 @@ public partial class dYdXBrokerage
                             HandleFills(dydxOrder, contents);
                         }
 
-                        OnOrderEvent(new OrderEvent(leanCancelOrder, DateTime.UtcNow, OrderFee.Zero, "dYdX Order Event")
+                        OnOrderEvent(new OrderEvent(leanCancelOrder, DateTime.UtcNow, OrderFee.Zero,
+                            $"dYdX Order Event (order id: {dydxOrder.Id})")
                         {
                             Status = OrderStatus.Canceled
                         });
@@ -418,7 +419,7 @@ public partial class dYdXBrokerage
                 (
                     leanOrder.Id, leanOrder.Symbol, updTime, status,
                     fill.Side, fillPrice, fillQuantity,
-                    orderFee, $"dYdX Order Event {fill.Side}"
+                    orderFee, $"dYdX Order Event {fill.Side} (fill id: {fill.Id})"
                 );
 
                 OnOrderEvent(orderEvent);
