@@ -33,6 +33,12 @@ public partial class dYdXBrokerage
     private readonly object _tickLocker = new();
     private readonly Dictionary<Symbol, DefaultOrderBook> _orderBooks = new();
 
+    // dYdX can report the same fill on more than one message (e.g. a partial fill while OPEN and again with
+    // the final status), so we track, per order, the ids of fills already turned into OrderEvents to avoid
+    // double counting holdings/cash. The per-order set is dropped once the order is filled or canceled, so
+    // memory stays bounded by the number of open orders rather than the lifetime fill count.
+    private readonly Dictionary<string, HashSet<string>> _processedFillIdsByOrder = [];
+
     /// <summary>
     /// Wss message handler
     /// </summary>
@@ -280,6 +286,15 @@ public partial class dYdXBrokerage
                 case "OPEN":
                 case "BEST_EFFORT_OPENED":
                     TryHandleOpen(dydxOrder);
+                    // dYdX v4 has no PARTIALLY_FILLED order status: intermediate partial fills
+                    // are reported through the Fills array while the order is still OPEN.
+                    // Process them here so the fills are not dropped, otherwise LEAN holdings/cash
+                    // drift from the broker state until the order eventually reaches FILLED.
+                    if (contents.Fills?.Any(x => x.OrderId == dydxOrder.Id) == true)
+                    {
+                        HandleFills(dydxOrder, contents);
+                    }
+
                     break;
 
                 case "CANCELED":
@@ -288,16 +303,28 @@ public partial class dYdXBrokerage
                         _orderProvider.GetOrdersByBrokerageId(dydxOrder.Id)?.SingleOrDefault();
                     if (leanCancelOrder != null)
                     {
+                        // dYdX can report a final partial fill in the same message that cancels the remainder.
+                        // Emit those fills (as PartiallyFilled) before the cancellation,
+                        // otherwise they are dropped the same way OPEN-status fills were.
+                        if (contents.Fills?.Any(x => x.OrderId == dydxOrder.Id) == true)
+                        {
+                            HandleFills(dydxOrder, contents);
+                        }
+
                         OnOrderEvent(new OrderEvent(leanCancelOrder, DateTime.UtcNow, OrderFee.Zero, "dYdX Order Event")
                         {
                             Status = OrderStatus.Canceled
                         });
                     }
 
+                    // terminal status: the order will receive no further fills, drop its dedup set
+                    ForgetProcessedFills(dydxOrder.Id);
                     break;
 
                 case "FILLED":
                     HandleFills(dydxOrder, contents);
+                    // terminal status: the order will receive no further fills, drop its dedup set
+                    ForgetProcessedFills(dydxOrder.Id);
                     break;
 
                 default:
@@ -359,6 +386,12 @@ public partial class dYdXBrokerage
             for (int i = 0; i < orderFills.Count; i++)
             {
                 var fill = orderFills[i];
+                if (!TryMarkFillProcessed(dydxOrder.Id, fill.Id))
+                {
+                    // already emitted this fill, skip it so holdings/cash are not double counted
+                    continue;
+                }
+
                 var fillPrice = fill.Price;
                 var fillQuantity = fill.Side == OrderDirection.Sell
                     ? -fill.Size
@@ -373,10 +406,14 @@ public partial class dYdXBrokerage
                     orderFee = new OrderFee(new CashAmount(fill.Fee.Value, leanOrder.PriceCurrency));
                 }
 
-                // no current order status
-                // TODO: check if we can get partially filled order status at all
-                // their API does not contain it https://docs.dydx.xyz/types/order_status#orderstatus
-                var status = i == orderFills.Count - 1 ? finalOrderStatus : OrderStatus.PartiallyFilled;
+                // dYdX has no PARTIALLY_FILLED order status (https://docs.dydx.xyz/types/order_status#orderstatus).
+                // A fill only completes the order when the order itself reached FILLED status and it is the last
+                // fill in the message; every other fill (including all fills that arrive while the order is still
+                // OPEN) is a partial fill.
+                var isLastFill = i == orderFills.Count - 1;
+                var status = isLastFill && finalOrderStatus == OrderStatus.Filled
+                    ? OrderStatus.Filled
+                    : OrderStatus.PartiallyFilled;
                 var orderEvent = new OrderEvent
                 (
                     leanOrder.Id, leanOrder.Symbol, updTime, status,
@@ -391,6 +428,41 @@ public partial class dYdXBrokerage
         {
             Log.Error(e);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Records a fill id as processed for the given order, returning <c>true</c> if it had not been seen
+    /// before (so it should be emitted) or <c>false</c> if it was already emitted. Fills without an id are
+    /// always processed.
+    /// </summary>
+    /// <remarks>Only called from the serialized message-handling path, so it needs no synchronization.</remarks>
+    private bool TryMarkFillProcessed(string brokerOrderId, string fillId)
+    {
+        if (string.IsNullOrEmpty(fillId))
+        {
+            // no id to deduplicate on, process it rather than risk dropping a real fill
+            return true;
+        }
+
+        if (!_processedFillIdsByOrder.TryGetValue(brokerOrderId, out var fillIds))
+        {
+            _processedFillIdsByOrder[brokerOrderId] = fillIds = [];
+        }
+
+        // HashSet.Add returns false when the fill was already emitted for this order
+        return fillIds.Add(fillId);
+    }
+
+    /// <summary>
+    /// Drops the tracked fill ids for an order once it reaches a terminal status. No-op when the order id is
+    /// null/empty or was never tracked (<see cref="Dictionary{TKey,TValue}.Remove(TKey)"/> throws on a null key).
+    /// </summary>
+    private void ForgetProcessedFills(string brokerOrderId)
+    {
+        if (!string.IsNullOrEmpty(brokerOrderId))
+        {
+            _processedFillIdsByOrder.Remove(brokerOrderId);
         }
     }
 

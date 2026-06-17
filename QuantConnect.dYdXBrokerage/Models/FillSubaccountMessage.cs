@@ -19,6 +19,7 @@ namespace QuantConnect.Brokerages.dYdX.Models;
 
 public class FillSubaccountMessage
 {
+    public string Id { get; set; }
     public string OrderId { get; set; }
     public OrderDirection Side { get; set; }
     public decimal Size { get; set; }
