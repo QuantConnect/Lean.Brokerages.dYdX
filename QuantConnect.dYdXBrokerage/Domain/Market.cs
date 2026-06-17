@@ -42,7 +42,7 @@ public class Market
 
     public const ulong DefaultGasLimit = 1_000_000;
     private const uint ShortBlockWindow = 20u;
-    private const decimal MarketPriceBuffer = 0.05m; //5% buffer
+    private const decimal MarketableBuyPriceMultiplier = 10m; // price buys 10x above the reference so they cross any ask
 
     public event Action<BrokerageMessageEvent> BrokerageMessage;
 
@@ -224,7 +224,7 @@ public class Market
 
         if (orderFlag == OrderFlags.ShortTerm)
         {
-            ConfigureShortTermOrder(dydxOrder, orderProperties, marketInfo, symbolProperties, side);
+            ConfigureShortTermOrder(dydxOrder, orderProperties, marketInfo, symbolProperties, order.Direction);
         }
         else
         {
@@ -252,17 +252,10 @@ public class Market
 
     private void ConfigureShortTermOrder(dYdXOrder dydxOrder, dYdXOrderProperties orderProperties,
         Models.Symbol marketInfo,
-        SymbolProperties symbolProperties, QuantConnect.dYdXBrokerage.dYdXProtocol.Clob.Order.Types.Side side)
+        SymbolProperties symbolProperties, OrderDirection direction)
     {
-        // Find the market configuration to get the current Oracle Price
-        var oraclePrice = marketInfo.OraclePrice;
-
-        // Calculate limit price: +5% for BUY, -5% for SELL to ensure fill
-        var targetPrice = side == QuantConnect.dYdXBrokerage.dYdXProtocol.Clob.Order.Types.Side.Buy
-            ? oraclePrice * (1 + MarketPriceBuffer)
-            : oraclePrice * (1 - MarketPriceBuffer);
-
-        dydxOrder.Subticks = CalculateSubticks(targetPrice, symbolProperties, marketInfo);
+        // Market orders have no protocol-level price; derive a marketable limit from the current oracle price.
+        dydxOrder.Subticks = CalculateMarketableSubticks(marketInfo.OraclePrice, direction, symbolProperties, marketInfo);
         dydxOrder.GoodTilBlock = GetBlockHeight() + (orderProperties?.GoodTilBlockOffset ?? ShortBlockWindow);
     }
 
@@ -300,11 +293,11 @@ public class Market
                 break;
 
             case StopMarketOrder stopMarketOrder:
-                // The triggered order's Subticks act as its limit price, so it must be marketable: the minimum
-                // (price = 0) fills a sell but leaves a buy resting below the ask, so price the buy above the stop.
-                dydxOrder.Subticks = stopMarketOrder.Direction == OrderDirection.Buy
-                    ? CalculateSubticks(stopMarketOrder.StopPrice * (1 + MarketPriceBuffer), symbolProperties, marketInfo)
-                    : CalculateSubticks(0, symbolProperties, marketInfo);
+                // Subticks act as the triggered order's limit price, so it must be marketable. Reuse the same
+                // pricing as a market order (anchored on the stop) so a triggered buy crosses the asks and a
+                // sell crosses the bids.
+                dydxOrder.Subticks = CalculateMarketableSubticks(stopMarketOrder.StopPrice, stopMarketOrder.Direction,
+                    symbolProperties, marketInfo);
                 break;
 
             default:
@@ -330,6 +323,19 @@ public class Market
         var subticks = Convert.ToUInt64(price * symbolProperties.PriceMagnifier);
         subticks = (subticks / marketInfo.SubticksPerTick) * marketInfo.SubticksPerTick;
         return Math.Max(subticks, marketInfo.SubticksPerTick);
+    }
+
+    private static ulong CalculateMarketableSubticks(decimal referencePrice, OrderDirection direction,
+        SymbolProperties symbolProperties, Models.Symbol marketInfo)
+    {
+        // Market/triggered orders must fill, so they intentionally forgo any slippage cap (use a limit order
+        // for price control). Price a sell at the minimum (0 -> crosses any bid) and a buy far above the
+        // reference (crosses any ask).
+        var targetPrice = direction == OrderDirection.Buy
+            ? referencePrice * MarketableBuyPriceMultiplier
+            : 0m;
+
+        return CalculateSubticks(targetPrice, symbolProperties, marketInfo);
     }
 
     private dYdXOrder.Types.TimeInForce GetTimeInForce(OrderType type, dYdXOrderProperties orderProperties = null)

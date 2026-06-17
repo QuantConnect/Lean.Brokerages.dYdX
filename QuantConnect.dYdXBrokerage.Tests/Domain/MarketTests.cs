@@ -121,7 +121,7 @@ public class MarketTests
     }
 
     [Test]
-    public void CreateOrder_LongTermBuyStopMarketOrder_UsesMarketableSubticksAboveStop()
+    public void CreateOrder_LongTermBuyStopMarketOrder_UsesAggressiveSubticksAboveStop()
     {
         var symbol = Symbol.Create("ETHUSD", SecurityType.CryptoFuture, QuantConnect.Market.DYDX);
         var stopPrice = 2400m;
@@ -138,8 +138,8 @@ public class MarketTests
 
         var result = _market.CreateOrder(order, clientId: 42);
 
-        // a triggered buy must be priced above the stop (stop * (1 + 5%)) so it actually fills, not at the minimum
-        Assert.AreEqual(2_520_000_000, result.Subticks);
+        // a triggered buy is priced far above the stop (stop * 10) so it crosses any ask and fills
+        Assert.AreEqual(24_000_000_000, result.Subticks);
         Assert.AreEqual(2_400_000_000, result.ConditionalOrderTriggerSubticks);
     }
 
@@ -161,7 +161,7 @@ public class MarketTests
 
         var result = _market.CreateOrder(order, clientId: 42);
 
-        // a triggered sell is priced at the minimum so it sells into any bid (fills like a market order)
+        // a triggered sell is priced at the minimum (0) so it crosses any bid and fills
         Assert.AreEqual(1_000, result.Subticks);
         Assert.AreEqual(2_400_000_000, result.ConditionalOrderTriggerSubticks);
     }
