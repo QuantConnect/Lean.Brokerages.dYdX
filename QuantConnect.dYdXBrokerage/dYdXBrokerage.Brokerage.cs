@@ -213,13 +213,34 @@ public partial class dYdXBrokerage
 
         if (result?.Code == 0 && !resetEvent.Wait(WaitPlaceOrderEventTimeout))
         {
-            OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1, "Order timed out"));
+            OnPlaceOrderTimeout(clientId, order);
         }
 
         _pendingOrders.TryRemove(clientId, out _);
         resetEvent.DisposeSafely();
 
         return true;
+    }
+
+    /// <summary>
+    /// Marks the order Invalid when its submission confirmation never arrived, so it does not stay stuck in
+    /// New (which LEAN refuses to cancel) and keep showing up in GetOpenOrders(). Invalid rather than Canceled
+    /// because, without an acknowledgement that the order went live, we cannot claim to have canceled it.
+    /// </summary>
+    private void OnPlaceOrderTimeout(uint clientId, Order order)
+    {
+        // Removing the pending entry is the synchronization point with TryHandleOpen: if it raced the
+        // confirmation in just as we timed out, the entry is already gone and we leave its Submitted as is.
+        if (!_pendingOrders.TryRemove(clientId, out _))
+        {
+            return;
+        }
+
+        OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1, "Order timed out"));
+        OnOrderEvent(new OrderEvent(order, DateTime.UtcNow, OrderFee.Zero, "dYdX Order Event: timed out")
+        {
+            Status = OrderStatus.Invalid
+        });
     }
 
     /// <summary>
