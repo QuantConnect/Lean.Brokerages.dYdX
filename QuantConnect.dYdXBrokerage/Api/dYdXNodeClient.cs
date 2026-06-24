@@ -17,6 +17,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.Threading;
 using Cosmos.Crypto.Secp256K1;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
@@ -43,9 +44,15 @@ namespace QuantConnect.Brokerages.dYdX.Api;
 
 public class dYdXNodeClient : IDisposable
 {
-    private const int MaxRetries = 5;
+    private const int MaxRetries = 8;
     private const int ErrorWrongSequence = 32;
     private const int ErrorCodeUnauthorized = 104;
+
+    // Back off before refreshing the sequence after a sequence error: RefreshSequence reads the committed
+    // account sequence, which lags any of our transactions still settling in the mempool. Waiting roughly
+    // one block lets those commit so the refreshed value is current. Grows per attempt, capped. See issue #33.
+    private static readonly TimeSpan SequenceRetryBackoff = TimeSpan.FromMilliseconds(1500);
+    private static readonly TimeSpan SequenceRetryBackoffCap = TimeSpan.FromMilliseconds(4500);
 
     private readonly GrpcChannel _grpcChannel;
     private readonly TxService.ServiceClient _txService;
@@ -53,6 +60,11 @@ public class dYdXNodeClient : IDisposable
     private readonly AccountPlusQuery.QueryClient _accountPlusService;
     private readonly RateGate _rateGate;
     private readonly AccountQuery.QueryClient _accountService;
+
+    // Serializes transaction submission. The account sequence (nonce) is read while signing and mutated on
+    // each accepted transaction, so concurrent place/cancel calls must not interleave; this also keeps at
+    // most one of our transactions in flight per account, making the sequence-error recovery deterministic.
+    private readonly object _txLock = new();
 
     public event Action<BrokerageMessageEvent> BrokerageMessage;
 
@@ -155,55 +167,74 @@ public class dYdXNodeClient : IDisposable
         Action<TxBody> bodyBuilder
     )
     {
-        var retries = MaxRetries;
-        while (true)
+        // Serialize submission so the account sequence is never read/advanced concurrently and only one of
+        // our transactions is in flight at a time (see _txLock).
+        lock (_txLock)
         {
-            if (retries == 0)
+            for (var attempt = 1; ; attempt++)
             {
-                throw new InvalidOperationException($"Failed to execute transaction after {MaxRetries} retries");
+                if (attempt > MaxRetries)
+                {
+                    throw new InvalidOperationException($"Failed to execute transaction after {MaxRetries} retries");
+                }
+
+                // Explicitly use the Authenticator-based authentication method.
+                // This ensures we rely on the authenticator ID rather than falling back
+                // to wallet private keys or mnemonic phrases for transaction signing.
+                if (!wallet.TryGetAuthenticatorId(out var authenticatorId))
+                {
+                    throw new AuthenticatorKeyMismatchException();
+                }
+
+                var txBody = CreateTxBody(authenticatorId);
+
+                bodyBuilder(txBody);
+                var response = BroadcastTransaction(wallet, txBody, gasLimit);
+                if (response.TxResponse.Code == ErrorCodeUnauthorized)
+                {
+                    // invalidate the authenticator ID as we received unauthorized error code and retry the transaction
+                    wallet.AuthenticatorId = null;
+                    continue;
+                }
+
+                // Cache the authenticator ID for future transactions as we didn't get the unauthorized error code
+                wallet.AuthenticatorId = authenticatorId;
+
+                if (response.TxResponse.Code != 0 && IsSequenceError(response.TxResponse.Code, response.TxResponse.RawLog))
+                {
+                    OnMessage(new BrokerageMessageEvent(
+                        BrokerageMessageType.Warning,
+                        -1,
+                        "Transaction sequence error, refreshing sequence"));
+
+                    // Back off so any of our in-flight transactions commit before we refresh from chain;
+                    // otherwise the refreshed sequence is stale and the retry collides again. See issue #33.
+                    var backoff = TimeSpan.FromTicks(Math.Min(SequenceRetryBackoff.Ticks * attempt, SequenceRetryBackoffCap.Ticks));
+                    Thread.Sleep(backoff);
+                    wallet.RefreshSequence(this);
+                    continue;
+                }
+
+                if (response.TxResponse.Code == 0 && orderFlags != (uint)OrderFlags.ShortTerm)
+                {
+                    wallet.IncrementSequence();
+                }
+
+                return response;
             }
-
-            retries--;
-
-            // Explicitly use the Authenticator-based authentication method.
-            // This ensures we rely on the authenticator ID rather than falling back
-            // to wallet private keys or mnemonic phrases for transaction signing.
-            if (!wallet.TryGetAuthenticatorId(out var authenticatorId))
-            {
-                throw new AuthenticatorKeyMismatchException();
-            }
-
-            var txBody = CreateTxBody(authenticatorId);
-
-            bodyBuilder(txBody);
-            var response = BroadcastTransaction(wallet, txBody, gasLimit);
-            if (response.TxResponse.Code == ErrorCodeUnauthorized)
-            {
-                // invalidate the authenticator ID as we received unauthorized error code and retry the transaction
-                wallet.AuthenticatorId = null;
-                continue;
-            }
-
-            // Cache the authenticator ID for future transactions as we didn't get the unauthorized error code
-            wallet.AuthenticatorId = authenticatorId;
-
-            if (response.TxResponse.Code == ErrorWrongSequence)
-            {
-                OnMessage(new BrokerageMessageEvent(
-                    BrokerageMessageType.Warning,
-                    -1,
-                    "Transaction sequence error, refreshing sequence"));
-                wallet.RefreshSequence(this);
-                continue;
-            }
-
-            if (response.TxResponse.Code == 0 && orderFlags != (uint)OrderFlags.ShortTerm)
-            {
-                wallet.IncrementSequence();
-            }
-
-            return response;
         }
+    }
+
+    /// <summary>
+    /// Whether a non-zero transaction response is a recoverable account-sequence (nonce) mismatch. dYdX reports
+    /// this either as the dedicated wrong-sequence code or, when signing through an authenticator, as a
+    /// signature-verification failure whose log references the account sequence. Both are recovered by
+    /// refreshing the sequence from chain and retrying.
+    /// </summary>
+    private static bool IsSequenceError(uint code, string rawLog)
+    {
+        return code == ErrorWrongSequence
+            || (rawLog != null && rawLog.IndexOf("sequence", StringComparison.OrdinalIgnoreCase) >= 0);
     }
 
     private BroadcastTxResponse BroadcastTransaction(Wallet wallet, TxBody txBody, ulong gasLimit)
