@@ -21,6 +21,7 @@ using System.Threading;
 using Cosmos.Crypto.Secp256K1;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
+using Grpc.Core;
 using Grpc.Net.Client;
 using QuantConnect.Brokerages.dYdX.Domain;
 using QuantConnect.Brokerages.dYdX.Domain.Enums;
@@ -189,7 +190,26 @@ public class dYdXNodeClient : IDisposable
                 var txBody = CreateTxBody(authenticatorId);
 
                 bodyBuilder(txBody);
-                var response = BroadcastTransaction(wallet, txBody, gasLimit);
+
+                BroadcastTxResponse response;
+                try
+                {
+                    response = BroadcastTransaction(wallet, txBody, gasLimit);
+                }
+                catch (RpcException ex) when (IsTransient(ex.StatusCode) && attempt < MaxRetries)
+                {
+                    // Transient node/transport fault (e.g. an RPC endpoint returning 503 -> Unavailable): the
+                    // request did not get processed, so the sequence is untouched and it is safe to re-broadcast.
+                    // Without this the exception escapes to PlaceOrder/CancelOrder and the order is failed
+                    // (Invalid) / the cancel silently dropped, for what a simple retry would have handled.
+                    OnMessage(new BrokerageMessageEvent(
+                        BrokerageMessageType.Warning,
+                        -1,
+                        $"Transient node error ({ex.StatusCode}), retrying transaction"));
+                    Thread.Sleep(RetryBackoff(attempt));
+                    continue;
+                }
+
                 if (response.TxResponse.Code == ErrorCodeUnauthorized)
                 {
                     // invalidate the authenticator ID as we received unauthorized error code and retry the transaction
@@ -209,8 +229,7 @@ public class dYdXNodeClient : IDisposable
 
                     // Back off so any of our in-flight transactions commit before we refresh from chain;
                     // otherwise the refreshed sequence is stale and the retry collides again. See issue #33.
-                    var backoff = TimeSpan.FromTicks(Math.Min(SequenceRetryBackoff.Ticks * attempt, SequenceRetryBackoffCap.Ticks));
-                    Thread.Sleep(backoff);
+                    Thread.Sleep(RetryBackoff(attempt));
                     wallet.RefreshSequence(this);
                     continue;
                 }
@@ -235,6 +254,25 @@ public class dYdXNodeClient : IDisposable
     {
         return code == ErrorWrongSequence
             || (rawLog != null && rawLog.IndexOf("sequence", StringComparison.OrdinalIgnoreCase) >= 0);
+    }
+
+    /// <summary>
+    /// Whether a gRPC failure is a transient node/transport fault for which the transaction was not processed
+    /// (so re-broadcasting is safe). Excludes ambiguous statuses such as DeadlineExceeded, where the request
+    /// may already have been committed and a blind retry could double-submit.
+    /// </summary>
+    private static bool IsTransient(StatusCode status)
+    {
+        return status is StatusCode.Unavailable or StatusCode.ResourceExhausted;
+    }
+
+    /// <summary>
+    /// Backoff before a retry, growing with the attempt number and capped. Roughly one dYdX block on the first
+    /// retry so the chain state (and any of our in-flight transactions) settles before we try again.
+    /// </summary>
+    private static TimeSpan RetryBackoff(int attempt)
+    {
+        return TimeSpan.FromTicks(Math.Min(SequenceRetryBackoff.Ticks * attempt, SequenceRetryBackoffCap.Ticks));
     }
 
     private BroadcastTxResponse BroadcastTransaction(Wallet wallet, TxBody txBody, ulong gasLimit)

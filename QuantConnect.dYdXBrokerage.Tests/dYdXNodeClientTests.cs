@@ -14,6 +14,7 @@
  */
 
 using System.Reflection;
+using Grpc.Core;
 using NUnit.Framework;
 using QuantConnect.Brokerages.dYdX.Api;
 
@@ -28,6 +29,12 @@ namespace QuantConnect.Brokerages.dYdX.Tests
         private static bool IsSequenceError(uint code, string rawLog)
             => (bool)_isSequenceError.Invoke(null, new object[] { code, rawLog });
 
+        private static readonly MethodInfo _isTransient = typeof(dYdXNodeClient)
+            .GetMethod("IsTransient", BindingFlags.NonPublic | BindingFlags.Static);
+
+        private static bool IsTransient(StatusCode status)
+            => (bool)_isTransient.Invoke(null, new object[] { status });
+
         // Issue #33: a nonce mismatch must be recognized so the transaction is refreshed and retried rather
         // than failing the order. dYdX surfaces it as the dedicated wrong-sequence code (32) or, when signing
         // through an authenticator, as a signature-verification failure whose log references the sequence.
@@ -41,6 +48,20 @@ namespace QuantConnect.Brokerages.dYdX.Tests
         public void DetectsSequenceErrors(uint code, string rawLog, bool expected)
         {
             Assert.AreEqual(expected, IsSequenceError(code, rawLog));
+        }
+
+        // Transient node/transport faults are safe to re-broadcast (the tx was not processed). Ambiguous
+        // statuses (e.g. DeadlineExceeded, where the tx may already be committed) must NOT be treated as
+        // transient, to avoid a double-submit.
+        [TestCase(StatusCode.Unavailable, true, TestName = "UnavailableIsTransient")]
+        [TestCase(StatusCode.ResourceExhausted, true, TestName = "ResourceExhaustedIsTransient")]
+        [TestCase(StatusCode.DeadlineExceeded, false, TestName = "DeadlineExceededIsNotTransient")]
+        [TestCase(StatusCode.Internal, false, TestName = "InternalIsNotTransient")]
+        [TestCase(StatusCode.InvalidArgument, false, TestName = "InvalidArgumentIsNotTransient")]
+        [TestCase(StatusCode.OK, false, TestName = "OkIsNotTransient")]
+        public void DetectsTransientFaults(StatusCode status, bool expected)
+        {
+            Assert.AreEqual(expected, IsTransient(status));
         }
     }
 }
