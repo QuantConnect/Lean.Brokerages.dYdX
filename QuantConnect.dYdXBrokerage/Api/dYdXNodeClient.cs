@@ -182,29 +182,58 @@ public class dYdXNodeClient : IDisposable
                     throw new InvalidOperationException($"Failed to execute transaction after {MaxRetries} retries");
                 }
 
-                // Explicitly use the Authenticator-based authentication method.
-                // This ensures we rely on the authenticator ID rather than falling back
-                // to wallet private keys or mnemonic phrases for transaction signing.
-                if (!wallet.TryGetAuthenticatorId(out var authenticatorId))
-                {
-                    throw new AuthenticatorKeyMismatchException();
-                }
-
-                var txBody = CreateTxBody(authenticatorId);
-
-                bodyBuilder(txBody);
-
-                BroadcastTxResponse response;
                 try
                 {
-                    response = BroadcastTransaction(wallet, txBody, gasLimit);
+                    // Explicitly use the Authenticator-based authentication method.
+                    // This ensures we rely on the authenticator ID rather than falling back
+                    // to wallet private keys or mnemonic phrases for transaction signing.
+                    if (!wallet.TryGetAuthenticatorId(out var authenticatorId))
+                    {
+                        throw new AuthenticatorKeyMismatchException();
+                    }
+
+                    var txBody = CreateTxBody(authenticatorId);
+                    bodyBuilder(txBody);
+
+                    var response = BroadcastTransaction(wallet, txBody, gasLimit);
+
+                    if (response.TxResponse.Code == ErrorCodeUnauthorized)
+                    {
+                        // invalidate the authenticator ID as we received unauthorized error code and retry the transaction
+                        wallet.AuthenticatorId = null;
+                        continue;
+                    }
+
+                    // Cache the authenticator ID for future transactions as we didn't get the unauthorized error code
+                    wallet.AuthenticatorId = authenticatorId;
+
+                    if (response.TxResponse.Code != 0 && IsSequenceError(response.TxResponse.Code, response.TxResponse.RawLog))
+                    {
+                        OnMessage(new BrokerageMessageEvent(
+                            BrokerageMessageType.Warning,
+                            -1,
+                            "Transaction sequence error, refreshing sequence"));
+
+                        // Back off so any of our in-flight transactions commit before we refresh from chain;
+                        // otherwise the refreshed sequence is stale and the retry collides again. See issue #33.
+                        Thread.Sleep(RetryBackoff(attempt));
+                        wallet.RefreshSequence(this);
+                        continue;
+                    }
+
+                    if (response.TxResponse.Code == 0 && orderFlags != (uint)OrderFlags.ShortTerm)
+                    {
+                        wallet.IncrementSequence();
+                    }
+
+                    return response;
                 }
                 catch (RpcException ex) when (IsTransient(ex.StatusCode) && attempt < MaxRetries)
                 {
-                    // Transient node/transport fault (e.g. an RPC endpoint returning 503 -> Unavailable): the
-                    // request did not get processed, so the sequence is untouched and it is safe to re-broadcast.
-                    // Without this the exception escapes to PlaceOrder/CancelOrder and the order is failed
-                    // (Invalid) / the cancel silently dropped, for what a simple retry would have handled.
+                    // Transient node/transport fault (e.g. an RPC endpoint returning 503 -> Unavailable) from any
+                    // gRPC call in the attempt -- the broadcast OR the RefreshSequence query. The request did not
+                    // get processed, so it is safe to retry; without this the exception escapes to
+                    // PlaceOrder/CancelOrder and the order is failed (Invalid) / the cancel silently dropped.
                     OnMessage(new BrokerageMessageEvent(
                         BrokerageMessageType.Warning,
                         -1,
@@ -212,37 +241,6 @@ public class dYdXNodeClient : IDisposable
                     Thread.Sleep(RetryBackoff(attempt));
                     continue;
                 }
-
-                if (response.TxResponse.Code == ErrorCodeUnauthorized)
-                {
-                    // invalidate the authenticator ID as we received unauthorized error code and retry the transaction
-                    wallet.AuthenticatorId = null;
-                    continue;
-                }
-
-                // Cache the authenticator ID for future transactions as we didn't get the unauthorized error code
-                wallet.AuthenticatorId = authenticatorId;
-
-                if (response.TxResponse.Code != 0 && IsSequenceError(response.TxResponse.Code, response.TxResponse.RawLog))
-                {
-                    OnMessage(new BrokerageMessageEvent(
-                        BrokerageMessageType.Warning,
-                        -1,
-                        "Transaction sequence error, refreshing sequence"));
-
-                    // Back off so any of our in-flight transactions commit before we refresh from chain;
-                    // otherwise the refreshed sequence is stale and the retry collides again. See issue #33.
-                    Thread.Sleep(RetryBackoff(attempt));
-                    wallet.RefreshSequence(this);
-                    continue;
-                }
-
-                if (response.TxResponse.Code == 0 && orderFlags != (uint)OrderFlags.ShortTerm)
-                {
-                    wallet.IncrementSequence();
-                }
-
-                return response;
             }
         }
     }
