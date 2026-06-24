@@ -35,6 +35,12 @@ namespace QuantConnect.Brokerages.dYdX.Tests
         private static bool IsTransient(StatusCode status)
             => (bool)_isTransient.Invoke(null, new object[] { status });
 
+        private static readonly MethodInfo _retryBackoff = typeof(dYdXNodeClient)
+            .GetMethod("RetryBackoff", BindingFlags.NonPublic | BindingFlags.Static);
+
+        private static System.TimeSpan RetryBackoff(int attempt)
+            => (System.TimeSpan)_retryBackoff.Invoke(null, new object[] { attempt });
+
         // Issue #33: a nonce mismatch must be recognized so the transaction is refreshed and retried rather
         // than failing the order. dYdX surfaces it as the dedicated wrong-sequence code (32) or, when signing
         // through an authenticator, as a signature-verification failure whose log references the sequence.
@@ -62,6 +68,18 @@ namespace QuantConnect.Brokerages.dYdX.Tests
         public void DetectsTransientFaults(StatusCode status, bool expected)
         {
             Assert.AreEqual(expected, IsTransient(status));
+        }
+
+        // Exponential backoff doubling from 0.25s and capped at 1s, kept short so a held _txLock does not
+        // stall concurrent order operations longer than ~one dYdX block. See issue #33.
+        [TestCase(1, 250)]
+        [TestCase(2, 500)]
+        [TestCase(3, 1000)]
+        [TestCase(4, 1000)]
+        [TestCase(8, 1000)]
+        public void RetryBackoffIsExponentialAndCapped(int attempt, int expectedMs)
+        {
+            Assert.AreEqual(expectedMs, (int)RetryBackoff(attempt).TotalMilliseconds);
         }
     }
 }

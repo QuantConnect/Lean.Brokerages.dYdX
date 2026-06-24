@@ -50,10 +50,13 @@ public class dYdXNodeClient : IDisposable
     private const int ErrorCodeUnauthorized = 104;
 
     // Back off before refreshing the sequence after a sequence error: RefreshSequence reads the committed
-    // account sequence, which lags any of our transactions still settling in the mempool. Waiting roughly
-    // one block lets those commit so the refreshed value is current. Grows per attempt, capped. See issue #33.
-    private static readonly TimeSpan SequenceRetryBackoff = TimeSpan.FromMilliseconds(1500);
-    private static readonly TimeSpan SequenceRetryBackoffCap = TimeSpan.FromMilliseconds(4500);
+    // account sequence, which only advances when a block commits (~1s on dYdX), so a retry that refreshes
+    // sooner just re-reads the stale value and collides again. Exponential from a small base (0.25s, 0.5s,
+    // 1s, 1s, ...): the first retries are cheap (recover immediately if the block already committed) while
+    // the schedule still spans a block within a couple of attempts in the worst case. Kept short on purpose
+    // so the held _txLock does not stall a concurrent cancel/replace longer than necessary. See issue #33.
+    private static readonly TimeSpan SequenceRetryBackoff = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan SequenceRetryBackoffCap = TimeSpan.FromMilliseconds(1000);
 
     private readonly GrpcChannel _grpcChannel;
     private readonly TxService.ServiceClient _txService;
@@ -267,12 +270,14 @@ public class dYdXNodeClient : IDisposable
     }
 
     /// <summary>
-    /// Backoff before a retry, growing with the attempt number and capped. Roughly one dYdX block on the first
-    /// retry so the chain state (and any of our in-flight transactions) settles before we try again.
+    /// Backoff before a retry: exponential from <see cref="SequenceRetryBackoff"/>, doubling each attempt and
+    /// capped at <see cref="SequenceRetryBackoffCap"/> (e.g. 0.25s, 0.5s, 1s, 1s, ...). Short first steps recover
+    /// quickly when the block has already committed; the cap keeps it near one dYdX block.
     /// </summary>
     private static TimeSpan RetryBackoff(int attempt)
     {
-        return TimeSpan.FromTicks(Math.Min(SequenceRetryBackoff.Ticks * attempt, SequenceRetryBackoffCap.Ticks));
+        var factor = 1L << Math.Min(attempt - 1, 16);
+        return TimeSpan.FromTicks(Math.Min(SequenceRetryBackoff.Ticks * factor, SequenceRetryBackoffCap.Ticks));
     }
 
     private BroadcastTxResponse BroadcastTransaction(Wallet wallet, TxBody txBody, ulong gasLimit)
