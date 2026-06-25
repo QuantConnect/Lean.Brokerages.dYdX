@@ -14,8 +14,10 @@
  */
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Threading;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using QuantConnect.Orders;
@@ -35,6 +37,12 @@ namespace QuantConnect.Brokerages.dYdX.Tests
 
         private static readonly FieldInfo _orderProviderField = typeof(dYdXBrokerage)
             .GetField("_orderProvider", BindingFlags.NonPublic | BindingFlags.Instance);
+
+        private static readonly FieldInfo _pendingOrdersField = typeof(dYdXBrokerage)
+            .GetField("_pendingOrders", BindingFlags.NonPublic | BindingFlags.Instance);
+
+        private static readonly MethodInfo _onPlaceOrderTimeout = typeof(dYdXBrokerage)
+            .GetMethod("OnPlaceOrderTimeout", BindingFlags.NonPublic | BindingFlags.Instance);
 
         private dYdXBrokerage _brokerage;
         private List<OrderEvent> _orderEvents;
@@ -298,6 +306,46 @@ namespace QuantConnect.Brokerages.dYdX.Tests
             Assert.AreEqual(1, _orderEvents.Count);
             Assert.AreEqual(OrderStatus.PartiallyFilled, _orderEvents[0].Status);
             Assert.AreEqual(0.001m, _orderEvents[0].FillQuantity);
+        }
+
+        [Test]
+        public void EmitsTerminalEventWhenSubmissionConfirmationTimesOut()
+        {
+            // Issue #32: the REST submission succeeded (Code 0) but the WebSocket OPEN/Submitted confirmation
+            // never arrived within the timeout. A terminal event must be emitted so the order leaves
+            // OrderStatus.New, otherwise LEAN can never cancel it and it stays in GetOpenOrders() forever.
+            const uint clientId = 287469u;
+            var order = new StopMarketOrder(_btcusd, 0.0048m, 64819m,
+                new DateTime(2026, 06, 14, 18, 01, 00, DateTimeKind.Utc));
+
+            var pendingOrders = (ConcurrentDictionary<uint, Tuple<ManualResetEventSlim, Order>>)
+                _pendingOrdersField.GetValue(_brokerage);
+            using var resetEvent = new ManualResetEventSlim(false);
+            pendingOrders[clientId] = Tuple.Create(resetEvent, (Order)order);
+
+            _onPlaceOrderTimeout.Invoke(_brokerage, [clientId, order]);
+
+            Assert.AreEqual(1, _orderEvents.Count);
+            // Invalid, not Canceled: we never got an acknowledgement that the order became live, so we
+            // cannot claim to have canceled it.
+            Assert.AreEqual(OrderStatus.Invalid, _orderEvents[0].Status);
+            // the pending entry is consumed so a late confirmation cannot resurrect the order
+            Assert.IsFalse(pendingOrders.ContainsKey(clientId));
+        }
+
+        [Test]
+        public void DoesNotEmitTerminalEventWhenConfirmationRacedInBeforeTimeout()
+        {
+            // If the WebSocket confirmation arrives just as we time out, TryHandleOpen has already removed the
+            // pending entry and emitted Submitted. The timeout path must not override that with an Invalid event.
+            const uint clientId = 287469u;
+            var order = new StopMarketOrder(_btcusd, 0.0048m, 64819m,
+                new DateTime(2026, 06, 14, 18, 01, 00, DateTimeKind.Utc));
+
+            // no pending entry: the confirmation already consumed it
+            _onPlaceOrderTimeout.Invoke(_brokerage, [clientId, order]);
+
+            Assert.IsEmpty(_orderEvents);
         }
     }
 }

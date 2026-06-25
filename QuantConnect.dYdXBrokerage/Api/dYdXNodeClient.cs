@@ -17,9 +17,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.Threading;
 using Cosmos.Crypto.Secp256K1;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
+using Grpc.Core;
 using Grpc.Net.Client;
 using QuantConnect.Brokerages.dYdX.Domain;
 using QuantConnect.Brokerages.dYdX.Domain.Enums;
@@ -43,9 +45,18 @@ namespace QuantConnect.Brokerages.dYdX.Api;
 
 public class dYdXNodeClient : IDisposable
 {
-    private const int MaxRetries = 5;
+    private const int MaxRetries = 8;
     private const int ErrorWrongSequence = 32;
     private const int ErrorCodeUnauthorized = 104;
+
+    // Back off before refreshing the sequence after a sequence error: RefreshSequence reads the committed
+    // account sequence, which only advances when a block commits (~1s on dYdX), so a retry that refreshes
+    // sooner just re-reads the stale value and collides again. Exponential from a small base (0.25s, 0.5s,
+    // 1s, 1s, ...): the first retries are cheap (recover immediately if the block already committed) while
+    // the schedule still spans a block within a couple of attempts in the worst case. Kept short on purpose
+    // so the held _txLock does not stall a concurrent cancel/replace longer than necessary. See issue #33.
+    private static readonly TimeSpan SequenceRetryBackoff = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan SequenceRetryBackoffCap = TimeSpan.FromMilliseconds(1000);
 
     private readonly GrpcChannel _grpcChannel;
     private readonly TxService.ServiceClient _txService;
@@ -53,6 +64,11 @@ public class dYdXNodeClient : IDisposable
     private readonly AccountPlusQuery.QueryClient _accountPlusService;
     private readonly RateGate _rateGate;
     private readonly AccountQuery.QueryClient _accountService;
+
+    // Serializes transaction submission. The account sequence (nonce) is read while signing and mutated on
+    // each accepted transaction, so concurrent place/cancel calls must not interleave; this also keeps at
+    // most one of our transactions in flight per account, making the sequence-error recovery deterministic.
+    private readonly object _txLock = new();
 
     public event Action<BrokerageMessageEvent> BrokerageMessage;
 
@@ -155,55 +171,115 @@ public class dYdXNodeClient : IDisposable
         Action<TxBody> bodyBuilder
     )
     {
-        var retries = MaxRetries;
-        while (true)
+        // Serialize submission so the account sequence is never read/advanced concurrently and only one of
+        // our transactions is in flight at a time (see _txLock).
+        lock (_txLock)
         {
-            if (retries == 0)
+            for (var attempt = 1; ; attempt++)
             {
-                throw new InvalidOperationException($"Failed to execute transaction after {MaxRetries} retries");
+                if (attempt > MaxRetries)
+                {
+                    throw new InvalidOperationException($"Failed to execute transaction after {MaxRetries} retries");
+                }
+
+                try
+                {
+                    // Explicitly use the Authenticator-based authentication method.
+                    // This ensures we rely on the authenticator ID rather than falling back
+                    // to wallet private keys or mnemonic phrases for transaction signing.
+                    if (!wallet.TryGetAuthenticatorId(out var authenticatorId))
+                    {
+                        throw new AuthenticatorKeyMismatchException();
+                    }
+
+                    // Cache the selected authenticator before broadcasting. TryGetAuthenticatorId dequeues it
+                    // from the wallet's queue, so if a transient fault aborts the broadcast below we must not
+                    // lose it: otherwise the retry dequeues the next one (or throws once the queue is empty,
+                    // e.g. a single-authenticator account). Caching here keeps transient retries on the same
+                    // authenticator; the unauthorized path below still clears it to rotate to the next one.
+                    wallet.AuthenticatorId = authenticatorId;
+
+                    var txBody = CreateTxBody(authenticatorId);
+                    bodyBuilder(txBody);
+
+                    var response = BroadcastTransaction(wallet, txBody, gasLimit);
+
+                    if (response.TxResponse.Code == ErrorCodeUnauthorized)
+                    {
+                        // invalidate the authenticator ID as we received unauthorized error code and retry the transaction
+                        wallet.AuthenticatorId = null;
+                        continue;
+                    }
+
+                    if (response.TxResponse.Code != 0 && IsSequenceError(response.TxResponse.Code, response.TxResponse.RawLog))
+                    {
+                        OnMessage(new BrokerageMessageEvent(
+                            BrokerageMessageType.Warning,
+                            -1,
+                            "Transaction sequence error, refreshing sequence"));
+
+                        // Back off so any of our in-flight transactions commit before we refresh from chain;
+                        // otherwise the refreshed sequence is stale and the retry collides again. See issue #33.
+                        Thread.Sleep(RetryBackoff(attempt));
+                        wallet.RefreshSequence(this);
+                        continue;
+                    }
+
+                    if (response.TxResponse.Code == 0 && orderFlags != (uint)OrderFlags.ShortTerm)
+                    {
+                        wallet.IncrementSequence();
+                    }
+
+                    return response;
+                }
+                catch (RpcException ex) when (IsTransient(ex.StatusCode) && attempt < MaxRetries)
+                {
+                    // Transient node/transport fault (e.g. an RPC endpoint returning 503 -> Unavailable) from any
+                    // gRPC call in the attempt -- the broadcast OR the RefreshSequence query. The request did not
+                    // get processed, so it is safe to retry; without this the exception escapes to
+                    // PlaceOrder/CancelOrder and the order is failed (Invalid) / the cancel silently dropped.
+                    OnMessage(new BrokerageMessageEvent(
+                        BrokerageMessageType.Warning,
+                        -1,
+                        $"Transient node error ({ex.StatusCode}), retrying transaction"));
+                    Thread.Sleep(RetryBackoff(attempt));
+                    continue;
+                }
             }
-
-            retries--;
-
-            // Explicitly use the Authenticator-based authentication method.
-            // This ensures we rely on the authenticator ID rather than falling back
-            // to wallet private keys or mnemonic phrases for transaction signing.
-            if (!wallet.TryGetAuthenticatorId(out var authenticatorId))
-            {
-                throw new AuthenticatorKeyMismatchException();
-            }
-
-            var txBody = CreateTxBody(authenticatorId);
-
-            bodyBuilder(txBody);
-            var response = BroadcastTransaction(wallet, txBody, gasLimit);
-            if (response.TxResponse.Code == ErrorCodeUnauthorized)
-            {
-                // invalidate the authenticator ID as we received unauthorized error code and retry the transaction
-                wallet.AuthenticatorId = null;
-                continue;
-            }
-
-            // Cache the authenticator ID for future transactions as we didn't get the unauthorized error code
-            wallet.AuthenticatorId = authenticatorId;
-
-            if (response.TxResponse.Code == ErrorWrongSequence)
-            {
-                OnMessage(new BrokerageMessageEvent(
-                    BrokerageMessageType.Warning,
-                    -1,
-                    "Transaction sequence error, refreshing sequence"));
-                wallet.RefreshSequence(this);
-                continue;
-            }
-
-            if (response.TxResponse.Code == 0 && orderFlags != (uint)OrderFlags.ShortTerm)
-            {
-                wallet.IncrementSequence();
-            }
-
-            return response;
         }
+    }
+
+    /// <summary>
+    /// Whether a non-zero transaction response is a recoverable account-sequence (nonce) mismatch. dYdX reports
+    /// this either as the dedicated wrong-sequence code or, when signing through an authenticator, as a
+    /// signature-verification failure whose log references the account sequence. Both are recovered by
+    /// refreshing the sequence from chain and retrying.
+    /// </summary>
+    private static bool IsSequenceError(uint code, string rawLog)
+    {
+        return code == ErrorWrongSequence
+            || (rawLog != null && rawLog.IndexOf("sequence", StringComparison.OrdinalIgnoreCase) >= 0);
+    }
+
+    /// <summary>
+    /// Whether a gRPC failure is a transient node/transport fault for which the transaction was not processed
+    /// (so re-broadcasting is safe). Excludes ambiguous statuses such as DeadlineExceeded, where the request
+    /// may already have been committed and a blind retry could double-submit.
+    /// </summary>
+    private static bool IsTransient(StatusCode status)
+    {
+        return status is StatusCode.Unavailable or StatusCode.ResourceExhausted;
+    }
+
+    /// <summary>
+    /// Backoff before a retry: exponential from <see cref="SequenceRetryBackoff"/>, doubling each attempt and
+    /// capped at <see cref="SequenceRetryBackoffCap"/> (e.g. 0.25s, 0.5s, 1s, 1s, ...). Short first steps recover
+    /// quickly when the block has already committed; the cap keeps it near one dYdX block.
+    /// </summary>
+    private static TimeSpan RetryBackoff(int attempt)
+    {
+        var factor = 1L << Math.Min(attempt - 1, 16);
+        return TimeSpan.FromTicks(Math.Min(SequenceRetryBackoff.Ticks * factor, SequenceRetryBackoffCap.Ticks));
     }
 
     private BroadcastTxResponse BroadcastTransaction(Wallet wallet, TxBody txBody, ulong gasLimit)
