@@ -192,6 +192,13 @@ public class dYdXNodeClient : IDisposable
                         throw new AuthenticatorKeyMismatchException();
                     }
 
+                    // Cache the selected authenticator before broadcasting. TryGetAuthenticatorId dequeues it
+                    // from the wallet's queue, so if a transient fault aborts the broadcast below we must not
+                    // lose it: otherwise the retry dequeues the next one (or throws once the queue is empty,
+                    // e.g. a single-authenticator account). Caching here keeps transient retries on the same
+                    // authenticator; the unauthorized path below still clears it to rotate to the next one.
+                    wallet.AuthenticatorId = authenticatorId;
+
                     var txBody = CreateTxBody(authenticatorId);
                     bodyBuilder(txBody);
 
@@ -203,9 +210,6 @@ public class dYdXNodeClient : IDisposable
                         wallet.AuthenticatorId = null;
                         continue;
                     }
-
-                    // Cache the authenticator ID for future transactions as we didn't get the unauthorized error code
-                    wallet.AuthenticatorId = authenticatorId;
 
                     if (response.TxResponse.Code != 0 && IsSequenceError(response.TxResponse.Code, response.TxResponse.RawLog))
                     {
