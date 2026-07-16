@@ -23,6 +23,7 @@ using Org.BouncyCastle.Crypto.Signers;
 using Org.BouncyCastle.Math;
 using QuantConnect.Brokerages.dYdX.Api;
 using QuantConnect.Brokerages.dYdX.Exceptions;
+using QuantConnect.dYdXBrokerage.dYdXProtocol.AccountPlus;
 using QuantConnect.Util;
 
 namespace QuantConnect.Brokerages.dYdX.Domain;
@@ -155,6 +156,22 @@ public class Wallet
 
         authenticatorId = 0;
         return false;
+    }
+
+    /// <summary>
+    /// Cycles to the next authenticator candidate by re-enqueuing the cached one at the back of the queue.
+    /// Cycling rather than dropping matters: the candidate pool is fixed, and the chain can transiently
+    /// reject a perfectly good authenticator (observed live as a one-off unauthorized/authentication error),
+    /// so the rotation must be able to come back to it instead of stranding the wallet on a candidate that
+    /// can never verify our key. With a single authenticator this degenerates to retrying it.
+    /// </summary>
+    public void RotateAuthenticator()
+    {
+        if (AuthenticatorId.HasValue)
+        {
+            _authenticators.Enqueue(AuthenticatorId.Value);
+            AuthenticatorId = null;
+        }
     }
 
     public ulong IncrementSequence()
@@ -304,8 +321,15 @@ public class Wallet
                 }
                 else
                 {
+                    // An account can hold authenticators registered for several keys (rotated keys, other
+                    // sessions); the chain rejects any transaction whose selected authenticator cannot
+                    // verify its signature, so try the ones that reference our signing key first.
+                    var publicKey = CompressedPublicKey(_authenticatorPrivateKey);
+                    var publicKeyBase64 = Convert.ToBase64String(publicKey);
                     _apiClient.Node.GetAuthenticators(_address)
-                        .DoForEach(authId => authenticators.Enqueue(authId));
+                        .OrderByDescending(authenticator =>
+                            ReferencesPublicKey(authenticator, publicKey, publicKeyBase64))
+                        .DoForEach(authenticator => authenticators.Enqueue(authenticator.Id));
                 }
 
                 if (authenticators is { Count: 0 or > MaxAuthenticatorsQueueSize })
@@ -334,6 +358,39 @@ public class Wallet
                 _chainId,
                 authenticators
             );
+        }
+
+        /// <summary>
+        /// The compressed secp256k1 public key of the signing private key — the value a
+        /// SignatureVerification authenticator registered for that key stores in its config.
+        /// </summary>
+        private static byte[] CompressedPublicKey(string privateKeyHex)
+        {
+            var curve = SecNamedCurves.GetByName("secp256k1");
+            var d = new BigInteger(1, Convert.FromHexString(privateKeyHex));
+            return curve.G.Multiply(d).Normalize().GetEncoded(true);
+        }
+
+        /// <summary>
+        /// Whether the authenticator's config references the given public key: a bare
+        /// SignatureVerification authenticator stores the raw compressed key, while composite ones
+        /// (AllOf/AnyOf) store JSON whose nested SignatureVerification configs are base64 encoded.
+        /// Deeper nesting levels are base64 encoded again and not matched here; those authenticators
+        /// are still reachable as fallback candidates behind the matching ones.
+        /// </summary>
+        private static bool ReferencesPublicKey(
+            AccountAuthenticator authenticator,
+            byte[] publicKey,
+            string publicKeyBase64)
+        {
+            var config = authenticator.Config;
+            if (config == null || config.IsEmpty)
+            {
+                return false;
+            }
+
+            return config.Span.SequenceEqual(publicKey)
+                || config.ToStringUtf8().Contains(publicKeyBase64, StringComparison.Ordinal);
         }
 
         // if you want to reuse the Wallet's method, make this internal in Wallet and call it

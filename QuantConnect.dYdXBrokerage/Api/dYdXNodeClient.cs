@@ -47,6 +47,12 @@ public class dYdXNodeClient : IDisposable
 {
     private const int MaxRetries = 8;
     private const int ErrorWrongSequence = 32;
+
+    // x/accountplus "authentication failed": the selected authenticator could not verify the transaction.
+    // Raised both when the wrong authenticator was selected (e.g. the account holds authenticators for
+    // several keys) and when the signed doc embeds a stale account sequence. Its message mentions the
+    // account sequence either way, so it must be classified before IsSequenceError.
+    private const int ErrorCodeAuthenticationFailed = 100;
     private const int ErrorCodeUnauthorized = 104;
 
     // Back off before refreshing the sequence after a sequence error: RefreshSequence reads the committed
@@ -119,7 +125,7 @@ public class dYdXNodeClient : IDisposable
         };
     }
 
-    public IEnumerable<ulong> GetAuthenticators(string address)
+    public IReadOnlyList<AccountAuthenticator> GetAuthenticators(string address)
     {
         var response = _accountPlusService.GetAuthenticators(new GetAuthenticatorsRequest { Account = address });
         if (response.AccountAuthenticators.IsNullOrEmpty())
@@ -127,7 +133,7 @@ public class dYdXNodeClient : IDisposable
             throw new InvalidOperationException("No authenticators found for the provided address");
         }
 
-        return response.AccountAuthenticators.Select(authenticator => authenticator.Id);
+        return response.AccountAuthenticators;
     }
 
     public dYdXPlaceOrderResponse PlaceOrder(Wallet wallet, Order order, ulong gasLimit)
@@ -206,8 +212,28 @@ public class dYdXNodeClient : IDisposable
 
                     if (response.TxResponse.Code == ErrorCodeUnauthorized)
                     {
-                        // invalidate the authenticator ID as we received unauthorized error code and retry the transaction
-                        wallet.AuthenticatorId = null;
+                        // Cycle to the next authenticator candidate and retry. Cycling (not dropping) because
+                        // this code has been observed transiently for an authenticator that normally verifies
+                        // fine — dropping it would strand the wallet on a candidate that never can.
+                        wallet.RotateAuthenticator();
+                        continue;
+                    }
+
+                    if (response.TxResponse.Code == ErrorCodeAuthenticationFailed)
+                    {
+                        // Ambiguous failure: recover from both possible causes by rotating to the next
+                        // authenticator candidate when one is available AND refreshing the sequence from
+                        // chain before retrying. Without this, a mis-selected authenticator was retried
+                        // forever (its error message mentions "sequence", so IsSequenceError claimed it)
+                        // and every order failed with "Failed to execute transaction after N retries".
+                        OnMessage(new BrokerageMessageEvent(
+                            BrokerageMessageType.Warning,
+                            -1,
+                            "Transaction authentication failed, retrying with refreshed sequence/authenticator"));
+
+                        Thread.Sleep(RetryBackoff(attempt));
+                        wallet.RotateAuthenticator();
+                        wallet.RefreshSequence(this);
                         continue;
                     }
 
