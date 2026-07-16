@@ -299,14 +299,24 @@ public partial class dYdXBrokerage
 
                 case "CANCELED":
                 case "BEST_EFFORT_CANCELED":
+                    var hasFills = contents.Fills?.Any(x => x.OrderId == dydxOrder.Id) == true;
                     var leanCancelOrder =
                         _orderProvider.GetOrdersByBrokerageId(dydxOrder.Id)?.SingleOrDefault();
+
+                    // dYdX can partially fill an order LEAN gave up on (see OnPlaceOrderTimeout) and then
+                    // cancel the remainder without LEAN ever seeing it open: recover the order so the
+                    // bundled fills are not dropped
+                    if (leanCancelOrder == null && hasFills && TryHandleOpen(dydxOrder))
+                    {
+                        leanCancelOrder = _orderProvider.GetOrdersByBrokerageId(dydxOrder.Id)?.SingleOrDefault();
+                    }
+
                     if (leanCancelOrder != null)
                     {
                         // dYdX can report a final partial fill in the same message that cancels the remainder.
                         // Emit those fills (as PartiallyFilled) before the cancellation,
                         // otherwise they are dropped the same way OPEN-status fills were.
-                        if (contents.Fills?.Any(x => x.OrderId == dydxOrder.Id) == true)
+                        if (hasFills)
                         {
                             HandleFills(dydxOrder, contents);
                         }
@@ -317,6 +327,15 @@ public partial class dYdXBrokerage
                             Status = OrderStatus.Canceled
                         });
                     }
+                    else if (hasFills)
+                    {
+                        // fills for an order we cannot attribute at all: let HandleFills surface the divergence
+                        HandleFills(dydxOrder, contents);
+                    }
+
+                    // dYdX confirmed the order is dead: a timed-out order canceled by the chain (e.g. its
+                    // good-til-block expired) needs no recovery anymore
+                    _timedOutOrders.TryRemove(dydxOrder.ClientId, out _);
 
                     // terminal status: the order will receive no further fills, drop its dedup set
                     ForgetProcessedFills(dydxOrder.Id);
@@ -352,6 +371,26 @@ public partial class dYdXBrokerage
             return true;
         }
 
+        // The submission confirmation never arrived in time so LEAN marked the order Invalid (see
+        // OnPlaceOrderTimeout), but the timeout verdict was wrong: the order reached the chain and dYdX is
+        // now reporting it. Re-register its broker id and tell LEAN it is live again so its fills update the
+        // portfolio; silently ignoring them leaves LEAN unaware of a real broker position, which compounds
+        // until margin pressure or liquidation exposes it.
+        if (_timedOutOrders.TryRemove(dydxOrder.ClientId, out var timedOutOrder))
+        {
+            timedOutOrder.BrokerId.Add(dydxOrder.Id);
+            _orderBrokerIdToClientIdMap.TryAdd(dydxOrder.Id, dydxOrder.ClientId);
+            OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1,
+                $"Order {timedOutOrder.Id} timed out awaiting its submission confirmation, but dYdX reported " +
+                $"it afterwards (id: {dydxOrder.Id}); resuming its tracking"));
+            OnOrderEvent(new OrderEvent(timedOutOrder, DateTime.UtcNow, OrderFee.Zero,
+                "dYdX Order Event: order confirmed after timeout")
+            {
+                Status = OrderStatus.Submitted
+            });
+            return true;
+        }
+
         return false;
     }
 
@@ -361,7 +400,7 @@ public partial class dYdXBrokerage
         {
             var leanOrder = _orderProvider.GetOrdersByBrokerageId(dydxOrder.Id)?.SingleOrDefault();
 
-            // check if FILL event arrived before OPEN
+            // check if the FILL event arrived before OPEN, or after the submission wait timed out
             if (leanOrder == null && TryHandleOpen(dydxOrder))
             {
                 leanOrder = _orderProvider.GetOrdersByBrokerageId(dydxOrder.Id)?.SingleOrDefault();
@@ -369,8 +408,25 @@ public partial class dYdXBrokerage
 
             if (leanOrder == null)
             {
-                // not our order, nothing else to do here
-                Log.Error($"{nameof(dYdXBrokerage)}.{nameof(HandleFills)}: order not found: {dydxOrder.Id}");
+                // A fill we cannot attribute to any order LEAN knows about: the portfolio no longer matches
+                // the broker account (e.g. another session trading the same subaccount). Silently dropping
+                // the fill hides the divergence until margin calls or liquidation expose it, so emit an
+                // Error, which stops the algorithm under the default brokerage message handler.
+                OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Error, -1,
+                    $"{nameof(dYdXBrokerage)}.{nameof(HandleFills)}: received fills for an unknown order " +
+                    $"(id: {dydxOrder.Id}, client id: {dydxOrder.ClientId}). LEAN's portfolio state no " +
+                    "longer matches the dYdX subaccount; verify the account holdings before resuming " +
+                    "trading."));
+                return;
+            }
+
+            if (leanOrder.Status == OrderStatus.Filled)
+            {
+                // A fully filled order cannot receive new fills: this is a re-delivered message (e.g. the
+                // indexer resending events after a websocket reconnect) arriving after the order's fill
+                // dedup set was dropped, and re-emitting its fills would double count holdings/cash.
+                Log.Trace($"{nameof(dYdXBrokerage)}.{nameof(HandleFills)}: ignoring fills re-delivered " +
+                    $"for filled order {leanOrder.Id} (brokerage id: {dydxOrder.Id})");
                 return;
             }
 

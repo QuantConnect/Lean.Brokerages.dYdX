@@ -72,6 +72,15 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
     private LiveNodePacket _job;
     private RateGate _connectionRateLimiter;
     private readonly ConcurrentDictionary<uint, Tuple<ManualResetEventSlim, Order>> _pendingOrders = new();
+
+    // Orders whose submission confirmation never arrived in time: LEAN marked them Invalid (see
+    // OnPlaceOrderTimeout) but the timeout is only a guess — the order may still reach the chain and fill,
+    // so keep it recoverable by client id (which dYdX echoes back on every order message). Entries are
+    // consumed when dYdX later reports the order (see TryHandleOpen) or confirms its cancellation; an order
+    // dYdX never heard of leaves a small entry behind, bounded by the number of timeouts, each of which is
+    // already an exceptional, warned event.
+    private readonly ConcurrentDictionary<uint, Order> _timedOutOrders = new();
+
     private readonly ConcurrentDictionary<string, uint> _orderBrokerIdToClientIdMap = new();
     private static readonly TimeSpan WaitPlaceOrderEventTimeout = TimeSpan.FromSeconds(15);
     private Domain.Market _market;

@@ -226,13 +226,21 @@ public partial class dYdXBrokerage
     /// Marks the order Invalid when its submission confirmation never arrived, so it does not stay stuck in
     /// New (which LEAN refuses to cancel) and keep showing up in GetOpenOrders(). Invalid rather than Canceled
     /// because, without an acknowledgement that the order went live, we cannot claim to have canceled it.
+    /// The order is kept in <see cref="_timedOutOrders"/> because the timeout is only a guess: dYdX may still
+    /// report the order open or filled later, in which case <see cref="TryHandleOpen"/> recovers it so its
+    /// fills are not dropped.
     /// </summary>
     private void OnPlaceOrderTimeout(uint clientId, Order order)
     {
+        // Register for recovery before removing the pending entry so a confirmation or fill arriving
+        // concurrently can never miss both lookups.
+        _timedOutOrders[clientId] = order;
+
         // Removing the pending entry is the synchronization point with TryHandleOpen: if it raced the
         // confirmation in just as we timed out, the entry is already gone and we leave its Submitted as is.
         if (!_pendingOrders.TryRemove(clientId, out _))
         {
+            _timedOutOrders.TryRemove(clientId, out _);
             return;
         }
 

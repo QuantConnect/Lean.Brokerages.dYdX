@@ -44,7 +44,11 @@ namespace QuantConnect.Brokerages.dYdX.Tests
         private static readonly MethodInfo _onPlaceOrderTimeout = typeof(dYdXBrokerage)
             .GetMethod("OnPlaceOrderTimeout", BindingFlags.NonPublic | BindingFlags.Instance);
 
+        private static readonly FieldInfo _timedOutOrdersField = typeof(dYdXBrokerage)
+            .GetField("_timedOutOrders", BindingFlags.NonPublic | BindingFlags.Instance);
+
         private dYdXBrokerage _brokerage;
+        private Order _leanOrder;
         private List<OrderEvent> _orderEvents;
 
         [SetUp]
@@ -53,11 +57,11 @@ namespace QuantConnect.Brokerages.dYdX.Tests
             _brokerage = new dYdXBrokerage();
 
             // an already submitted order known to LEAN (its broker id was assigned on the OPEN ack)
-            var leanOrder = new MarketOrder(_btcusd, 0.0048m, new DateTime(2026, 06, 14, 18, 01, 00, DateTimeKind.Utc));
-            leanOrder.BrokerId.Add(BrokerId);
+            _leanOrder = new MarketOrder(_btcusd, 0.0048m, new DateTime(2026, 06, 14, 18, 01, 00, DateTimeKind.Utc));
+            _leanOrder.BrokerId.Add(BrokerId);
 
             var orderProvider = new OrderProvider();
-            orderProvider.Add(leanOrder);
+            orderProvider.Add(_leanOrder);
             _orderProviderField.SetValue(_brokerage, orderProvider);
 
             _orderEvents = [];
@@ -329,8 +333,11 @@ namespace QuantConnect.Brokerages.dYdX.Tests
             // Invalid, not Canceled: we never got an acknowledgement that the order became live, so we
             // cannot claim to have canceled it.
             Assert.AreEqual(OrderStatus.Invalid, _orderEvents[0].Status);
-            // the pending entry is consumed so a late confirmation cannot resurrect the order
+            // the pending entry is consumed so PlaceOrder stops waiting on it...
             Assert.IsFalse(pendingOrders.ContainsKey(clientId));
+            // ...but the order stays recoverable by client id: the timeout is only a guess and dYdX may
+            // still report the order open or filled later (issue #35)
+            Assert.IsTrue(GetTimedOutOrders().ContainsKey(clientId));
         }
 
         [Test]
@@ -346,6 +353,240 @@ namespace QuantConnect.Brokerages.dYdX.Tests
             _onPlaceOrderTimeout.Invoke(_brokerage, [clientId, order]);
 
             Assert.IsEmpty(_orderEvents);
+            // and no recovery entry is left behind for an order that was confirmed normally
+            Assert.IsFalse(GetTimedOutOrders().ContainsKey(clientId));
+        }
+
+        [Test]
+        public void RecoversFillsWhenTimedOutOrderFillsAfterwards()
+        {
+            // Issue #35: the submission confirmation never arrived so LEAN marked the order Invalid, but the
+            // order actually reached the chain and dYdX filled it. The fills must be recovered through the
+            // client id, otherwise LEAN's portfolio silently diverges from the real broker position (which
+            // has been observed to compound until full account liquidation).
+            const uint clientId = 287469u;
+            const string lateBrokerId = "821402df-7366-5cba-9e36-60b0c3be1b04";
+            var order = RegisterTimedOutOrder(clientId);
+
+            DispatchSubaccountUpdate($$"""
+            {
+                "orders": [{
+                    "id": "{{lateBrokerId}}",
+                    "clientId": "{{clientId}}",
+                    "side": "SELL",
+                    "status": "FILLED",
+                    "totalFilled": "0.0048"
+                }],
+                "fills": [{
+                    "orderId": "{{lateBrokerId}}",
+                    "side": "SELL",
+                    "size": "0.0048",
+                    "price": "64000",
+                    "ticker": "BTC-USD",
+                    "createdAt": "2026-07-12T15:11:30.000Z"
+                }]
+            }
+            """);
+
+            // Invalid from the timeout, then the recovery: Submitted followed by the fill
+            Assert.AreEqual(3, _orderEvents.Count);
+            Assert.AreEqual(OrderStatus.Invalid, _orderEvents[0].Status);
+            Assert.AreEqual(OrderStatus.Submitted, _orderEvents[1].Status);
+            Assert.AreEqual(OrderStatus.Filled, _orderEvents[2].Status);
+            Assert.AreEqual(-0.0048m, _orderEvents[2].FillQuantity);
+            Assert.AreEqual(64000m, _orderEvents[2].FillPrice);
+            // the broker id is registered so any further messages resolve through the order provider
+            Assert.IsTrue(order.BrokerId.Contains(lateBrokerId));
+            // the recovery entry is consumed
+            Assert.IsFalse(GetTimedOutOrders().ContainsKey(clientId));
+        }
+
+        [Test]
+        public void ResurrectsTimedOutOrderWhenOpenConfirmationArrivesLate()
+        {
+            // The OPEN acknowledgement arrives after the submission wait already timed out: the order is
+            // live at dYdX, so LEAN must be told it is Submitted again instead of leaving a dead Invalid
+            // order whose future fills would be unattributable.
+            const uint clientId = 287469u;
+            const string lateBrokerId = "6f67e7e1-6630-5373-b20b-004fc02a5e6f";
+            var order = RegisterTimedOutOrder(clientId);
+
+            DispatchSubaccountUpdate($$"""
+            {
+                "orders": [{
+                    "id": "{{lateBrokerId}}",
+                    "clientId": "{{clientId}}",
+                    "side": "SELL",
+                    "status": "OPEN"
+                }]
+            }
+            """);
+
+            Assert.AreEqual(2, _orderEvents.Count);
+            Assert.AreEqual(OrderStatus.Invalid, _orderEvents[0].Status);
+            Assert.AreEqual(OrderStatus.Submitted, _orderEvents[1].Status);
+            Assert.IsTrue(order.BrokerId.Contains(lateBrokerId));
+            Assert.IsFalse(GetTimedOutOrders().ContainsKey(clientId));
+        }
+
+        [Test]
+        public void RecoversBundledFillWhenTimedOutOrderIsCanceledWithAFill()
+        {
+            // A timed-out order can be partially filled and then canceled by the chain (e.g. good-til-block
+            // expiry) without LEAN ever seeing it open: the bundled fill must still reach the portfolio.
+            const uint clientId = 287469u;
+            const string lateBrokerId = "e0eb4e6c-8f26-5ff9-bac4-60e85175b4c9";
+            RegisterTimedOutOrder(clientId);
+
+            DispatchSubaccountUpdate($$"""
+            {
+                "orders": [{
+                    "id": "{{lateBrokerId}}",
+                    "clientId": "{{clientId}}",
+                    "side": "SELL",
+                    "status": "CANCELED",
+                    "totalFilled": "0.001"
+                }],
+                "fills": [{
+                    "orderId": "{{lateBrokerId}}",
+                    "side": "SELL",
+                    "size": "0.001",
+                    "price": "64000",
+                    "ticker": "BTC-USD",
+                    "createdAt": "2026-07-12T15:11:30.000Z"
+                }]
+            }
+            """);
+
+            Assert.AreEqual(4, _orderEvents.Count);
+            Assert.AreEqual(OrderStatus.Invalid, _orderEvents[0].Status);
+            Assert.AreEqual(OrderStatus.Submitted, _orderEvents[1].Status);
+            Assert.AreEqual(OrderStatus.PartiallyFilled, _orderEvents[2].Status);
+            Assert.AreEqual(-0.001m, _orderEvents[2].FillQuantity);
+            Assert.AreEqual(OrderStatus.Canceled, _orderEvents[3].Status);
+        }
+
+        [Test]
+        public void DropsRecoveryEntryWhenTimedOutOrderIsCanceledWithoutFills()
+        {
+            // dYdX confirmed the order is dead without ever filling it: LEAN's Invalid verdict was right
+            // and the recovery entry is no longer needed.
+            const uint clientId = 287469u;
+            const string lateBrokerId = "e0eb4e6c-8f26-5ff9-bac4-60e85175b4c9";
+            RegisterTimedOutOrder(clientId);
+
+            DispatchSubaccountUpdate($$"""
+            {
+                "orders": [{
+                    "id": "{{lateBrokerId}}",
+                    "clientId": "{{clientId}}",
+                    "side": "SELL",
+                    "status": "CANCELED"
+                }]
+            }
+            """);
+
+            // only the Invalid event from the timeout: the order was never resurrected
+            Assert.AreEqual(1, _orderEvents.Count);
+            Assert.AreEqual(OrderStatus.Invalid, _orderEvents[0].Status);
+            Assert.IsFalse(GetTimedOutOrders().ContainsKey(clientId));
+        }
+
+        [Test]
+        public void EmitsErrorMessageWhenFillCannotBeAttributed()
+        {
+            // A fill for an order LEAN knows nothing about means the portfolio no longer matches the broker
+            // account. It must be surfaced as an Error (stopping the algorithm under the default brokerage
+            // message handler) instead of being silently logged and dropped (issue #35).
+            var brokerageMessages = new List<BrokerageMessageEvent>();
+            _brokerage.Message += (_, message) => brokerageMessages.Add(message);
+
+            DispatchSubaccountUpdate("""
+            {
+                "orders": [{
+                    "id": "00000000-0000-0000-0000-000000000000",
+                    "clientId": "999999",
+                    "side": "SELL",
+                    "status": "FILLED",
+                    "totalFilled": "0.001"
+                }],
+                "fills": [{
+                    "orderId": "00000000-0000-0000-0000-000000000000",
+                    "side": "SELL",
+                    "size": "0.001",
+                    "price": "64000",
+                    "ticker": "BTC-USD",
+                    "createdAt": "2026-07-12T15:11:30.000Z"
+                }]
+            }
+            """);
+
+            Assert.IsEmpty(_orderEvents);
+            Assert.AreEqual(1, brokerageMessages.Count);
+            Assert.AreEqual(BrokerageMessageType.Error, brokerageMessages[0].Type);
+        }
+
+        [Test]
+        public void DoesNotReEmitFillsWhenFilledMessageIsRedelivered()
+        {
+            // Once the order reaches FILLED its fill dedup set is dropped, so a re-delivery of the same
+            // message (e.g. the indexer resending events after a websocket reconnect) can no longer be
+            // deduplicated fill-by-fill. A fully filled order cannot receive new fills, so re-deliveries
+            // must be ignored wholesale or holdings/cash would be double counted.
+            var fillMessage = $$"""
+            {
+                "orders": [{
+                    "id": "{{BrokerId}}",
+                    "clientId": "287469",
+                    "side": "BUY",
+                    "status": "FILLED",
+                    "totalFilled": "0.0048"
+                }],
+                "fills": [{
+                    "id": "8f3b6a1c-0e2d-4c5b-9a8f-1b2c3d4e5f60",
+                    "orderId": "{{BrokerId}}",
+                    "side": "BUY",
+                    "size": "0.0048",
+                    "price": "64000",
+                    "ticker": "BTC-USD",
+                    "createdAt": "2026-06-14T19:00:00.000Z"
+                }]
+            }
+            """;
+
+            DispatchSubaccountUpdate(fillMessage);
+            Assert.AreEqual(1, _orderEvents.Count);
+            Assert.AreEqual(OrderStatus.Filled, _orderEvents[0].Status);
+
+            // the live transaction handler marks the LEAN order Filled once the event is processed
+            _leanOrder.Status = OrderStatus.Filled;
+
+            DispatchSubaccountUpdate(fillMessage);
+            Assert.AreEqual(1, _orderEvents.Count);
+        }
+
+        // Places an order into the pending map and forces the submission-confirmation timeout, leaving the
+        // order Invalid on the LEAN side but recoverable by client id, exactly as OnPlaceOrderTimeout does
+        // when the OPEN acknowledgement never arrives in production.
+        private Order RegisterTimedOutOrder(uint clientId)
+        {
+            var order = new LimitOrder(_btcusd, -0.0048m, 64000m,
+                new DateTime(2026, 07, 12, 15, 11, 00, DateTimeKind.Utc));
+            var orderProvider = (OrderProvider)_orderProviderField.GetValue(_brokerage);
+            orderProvider.Add(order);
+
+            var pendingOrders = (ConcurrentDictionary<uint, Tuple<ManualResetEventSlim, Order>>)
+                _pendingOrdersField.GetValue(_brokerage);
+            using var resetEvent = new ManualResetEventSlim(false);
+            pendingOrders[clientId] = Tuple.Create(resetEvent, (Order)order);
+            _onPlaceOrderTimeout.Invoke(_brokerage, [clientId, order]);
+
+            return order;
+        }
+
+        private ConcurrentDictionary<uint, Order> GetTimedOutOrders()
+        {
+            return (ConcurrentDictionary<uint, Order>)_timedOutOrdersField.GetValue(_brokerage);
         }
     }
 }
