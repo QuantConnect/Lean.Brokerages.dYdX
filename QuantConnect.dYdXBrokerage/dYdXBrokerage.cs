@@ -73,7 +73,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
     private RateGate _connectionRateLimiter;
     private readonly ConcurrentDictionary<uint, Tuple<ManualResetEventSlim, Order>> _pendingOrders = new();
     private readonly ConcurrentDictionary<string, uint> _orderBrokerIdToClientIdMap = new();
-    private static readonly TimeSpan WaitPlaceOrderEventTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan WaitPlaceOrderEventTimeout = TimeSpan.FromSeconds(180);
     private Domain.Market _market;
     private SymbolPropertiesDatabaseSymbolMapper _symbolMapper;
     private dYdXApiClient _apiClient;
