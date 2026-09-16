@@ -35,6 +35,7 @@ using QuantConnect.Configuration;
 using QuantConnect.Data;
 using QuantConnect.Data.Market;
 using QuantConnect.Interfaces;
+using QuantConnect.Lean.Engine.Results;
 using QuantConnect.Logging;
 using QuantConnect.Orders;
 using QuantConnect.Packets;
@@ -241,6 +242,10 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
             _market.BrokerageMessage += OnMessage;
             Connect();
         }
+
+        DeploymentDetailsHelper.Add("dydx-address", address);
+        DeploymentDetailsHelper.Add("dydx-chain-id", chainId);
+        DeploymentDetailsHelper.Add("dydx-subaccount-number", subaccountNumber.ToStringInvariant());
     }
 
     private dYdXApiClient GetApiClient(string nodeGrpcUrl, string indexerUrl)
