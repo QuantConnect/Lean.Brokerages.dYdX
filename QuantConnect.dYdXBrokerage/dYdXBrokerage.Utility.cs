@@ -14,6 +14,7 @@
  */
 
 using System;
+using System.Net.WebSockets;
 
 namespace QuantConnect.Brokerages.dYdX;
 
@@ -23,6 +24,13 @@ public partial class dYdXBrokerage
     {
         // we do not expect collisions here, so 31 bit is enough
         return (uint)Random.Shared.Next();
+    }
+
+    private static WebSocketClientWrapper CreateWebSocket()
+    {
+        // the indexer rejects connections without permessage-deflate compression with an HTTP 426
+        // Ref: https://status.dydx.trade/incidents/jt0c1mfw8jlk
+        return new WebSocketClientWrapper { DeflateOptions = new WebSocketDeflateOptions() };
     }
 
 }

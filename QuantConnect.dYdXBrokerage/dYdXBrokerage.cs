@@ -167,7 +167,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
 
         ValidateSubscription();
 
-        base.Initialize(indexerWssUrl, new WebSocketClientWrapper(), httpClient: null, null, null);
+        base.Initialize(indexerWssUrl, CreateWebSocket(), httpClient: null, null, null);
 
         _job = job;
         _algorithm = algorithm;
@@ -208,7 +208,7 @@ public partial class dYdXBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler
             maxSymbolsPerWebsocketConnection,
             maximumWebSocketConnections,
             symbolWeights,
-            () => new WebSocketClientWrapper(),
+            CreateWebSocket,
             Subscribe,
             Unsubscribe,
             OnDataMessage,
